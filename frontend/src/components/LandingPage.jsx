@@ -11,7 +11,7 @@ const LandingPage = () => {
 
   return (
     <div className={`min-h-screen ${isDarkMode ? 'bg-gray-950' : 'bg-white'}`}>
-      {/* Navigation */}
+       {/* Navigation */}
       <nav className={`fixed w-full ${isDarkMode ? 'bg-gray-900/90' : 'bg-white/90'} backdrop-blur-md shadow-sm z-50`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
@@ -21,7 +21,7 @@ const LandingPage = () => {
                 InvoicePro
               </span>
             </div>
-            
+           
             {/* Desktop Menu */}
             <div className="hidden md:flex items-center space-x-8">
               <a href="#features" className={`${isDarkMode ? 'text-gray-300 hover:text-blue-400' : 'text-gray-700 hover:text-blue-600'} transition`}>Features</a>
