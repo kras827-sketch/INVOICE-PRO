@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Test</title>
+    <style>
+        body { font-family: Arial; padding: 20px; max-width: 600px; margin: 0 auto; }
+        .test { border: 1px solid #ccc; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; cursor: pointer; border-radius: 3px; }
+        .success { color: green; }
+        .error { color: red; }
+        pre { background: #f4f4f4; padding: 10px; border-radius: 3px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Invoice App - API Test</h1>
+    
+    <div class="test">
+        <h3>1. Test Backend Health</h3>
+        <button onclick="testHealth()">Test Health Endpoint</button>
+        <pre id="health-result"></pre>
+    </div>
+    
+    <div class="test">
+        <h3>2. Test Signup Endpoint</h3>
+        <input type="text" id="name" placeholder="Name" value="Test User">
+        <input type="email" id="email" placeholder="Email" value="test-api@example.com">
+        <input type="password" id="password" placeholder="Password" value="password123">
+        <button onclick="testSignup()">Test Signup</button>
+        <pre id="signup-result"></pre>
+    </div>
+    
+    <div class="test">
+        <h3>3. Check Frontend Config</h3>
+        <button onclick="checkConfig()">Check Config</button>
+        <pre id="config-result"></pre>
+    </div>
+
+    <script>
+        async function testHealth() {
+            const result = document.getElementById('health-result');
+            try {
+                result.innerHTML = 'Testing...';
+                const resp = await fetch('http://localhost:5000/api/health');
+                const data = await resp.json();
+                result.innerHTML = `<span class="success">✅ SUCCESS (${resp.status})</span>\n${JSON.stringify(data, null, 2)}`;
+            } catch (e) {
+                result.innerHTML = `<span class="error">❌ FAILED: ${e.message}</span>`;
+            }
+        }
+
+        async function testSignup() {
+            const result = document.getElementById('signup-result');
+            try {
+                result.innerHTML = 'Testing...';
+                const payload = {
+                    name: document.getElementById('name').value,
+                    email: document.getElementById('email').value,
+                    password: document.getElementById('password').value
+                };
+                
+                const resp = await fetch('http://localhost:5000/api/auth/signup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await resp.json();
+                const statusClass = resp.ok ? 'success' : 'error';
+                result.innerHTML = `<span class="${statusClass}">${resp.ok ? '✅' : '❌'} Status: ${resp.status}</span>\n${JSON.stringify(data, null, 2)}`;
+            } catch (e) {
+                result.innerHTML = `<span class="error">❌ FAILED: ${e.message}</span>`;
+            }
+        }
+
+        function checkConfig() {
+            const result = document.getElementById('config-result');
+            const apiUrl = import.meta.env?.VITE_API_URL || 'NOT SET';
+            result.innerHTML = `
+Frontend Environment:
+- VITE_API_URL: ${apiUrl}
+- Current URL: ${window.location.href}
+- Backend should be at: http://localhost:5000/api
+
+Check browser DevTools for console logs starting with "🔗 API Base URL"
+            `.trim();
+        }
+
+        // Auto-test health on load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                console.log('🧪 Auto-testing health endpoint...');
+                testHealth();
+            }, 500);
+        });
+    </script>
+</body>
+</html>
