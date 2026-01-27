@@ -2,10 +2,10 @@ import axios from 'axios';
 
 const isProduction = import.meta.env.MODE === 'production';
 
-// In production: use /api (relative path for same-origin requests)
+// In production: use backend API URL or fallback
 // In development: use VITE_API_URL environment variable (default http://localhost:5000)
 const apiBaseUrl = isProduction 
-  ? '/api' 
+  ? (import.meta.env.VITE_API_URL || 'http://localhost:5000') 
   : (import.meta.env.VITE_API_URL || 'http://localhost:5000');
 
 // Ensure the baseURL always ends properly for appending paths
