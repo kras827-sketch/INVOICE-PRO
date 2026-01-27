@@ -27,6 +27,12 @@ export const AuthProvider = ({ children }) => {
 
   // 🔁 Listen to Firebase auth state + Initialize from localStorage
   useEffect(() => {
+    // Guard: Only run in browser
+    if (typeof window === 'undefined') {
+      setLoading(false);
+      return;
+    }
+
     let hasStoredUser = false;
     
     // STEP 1: Check localStorage
@@ -64,7 +70,9 @@ export const AuthProvider = ({ children }) => {
       }
     };
 
-    window.addEventListener('storage', handleStorageChange);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', handleStorageChange);
+    }
 
     // STEP 2: Set up auth listener (Firebase sync happens in background)
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
@@ -99,7 +107,9 @@ export const AuthProvider = ({ children }) => {
 
     return () => {
       unsubscribe();
-      window.removeEventListener('storage', handleStorageChange);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('storage', handleStorageChange);
+      }
     };
   }, []);
 
@@ -138,8 +148,10 @@ export const AuthProvider = ({ children }) => {
           isVerified: true  // ✅ Google users are always verified
         };
         const token = data.token || 'firebase-' + fbUser.uid;
-        localStorage.setItem('token', token);
-        localStorage.setItem('user', JSON.stringify(minimalUser));
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('token', token);
+          localStorage.setItem('user', JSON.stringify(minimalUser));
+        }
         setUser(minimalUser);
         console.log('⚠️ Using fallback user object');
         return true;
@@ -151,9 +163,11 @@ export const AuthProvider = ({ children }) => {
         ...data.user,
         isVerified: data.user.isVerified !== undefined ? data.user.isVerified : true
       };
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(userToSave));
-      console.log('📦 Saved to localStorage - token:', !!localStorage.getItem('token'), 'user:', !!localStorage.getItem('user'));
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(userToSave));
+        console.log('📦 Saved to localStorage - token:', !!localStorage.getItem('token'), 'user:', !!localStorage.getItem('user'));
+      }
       setUser(userToSave);
       console.log('📝 Called setUser with:', userToSave);
       return true;

@@ -115,7 +115,7 @@ const Login = () => {
         return;
       }
       
-      // Handle other specific errors
+      // Handle specific backend error messages
       if (err.response?.data?.message === 'Please verify your account first') {
         setError('❌ Account not verified. Check your email for the OTP code.');
         setTimeout(() => {
@@ -124,11 +124,30 @@ const Login = () => {
             replace: true 
           });
         }, 1500);
-      } else if (err.response?.data?.message === 'Invalid credentials' || err.response?.status === 400) {
+      } 
+      else if (err.response?.data?.message === 'Invalid credentials' || err.response?.status === 400) {
         setError('❌ Email or password is incorrect');
-      } else if (err.response?.data?.message) {
+      } 
+      else if (err.response?.data?.message) {
         setError('❌ ' + err.response.data.message);
-      } else {
+      }
+      // Handle network errors
+      else if (!err.response) {
+        console.error('Network error or server unreachable:', err.message);
+        setError('❌ Unable to connect to our servers. Please check your internet connection and try again.');
+      }
+      // Handle 404 errors
+      else if (err.response?.status === 404) {
+        console.error('404 Error - API endpoint not found');
+        setError('❌ Login service unavailable. Please try again shortly.');
+      }
+      // Handle server errors
+      else if (err.response?.status >= 500) {
+        console.error('Server error:', err.response?.status);
+        setError('❌ Our servers are experiencing issues. Please try again shortly.');
+      }
+      // Generic fallback
+      else {
         setError('❌ Login failed. Please try again.');
       }
     } finally {
@@ -218,7 +237,8 @@ const Login = () => {
       }
     } catch (err) {
       console.error(err);
-      setError('❌ Failed to send reset email');
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to send reset email';
+      setError('❌ ' + errorMessage);
     } finally {
       setIsLoading(false);
     }

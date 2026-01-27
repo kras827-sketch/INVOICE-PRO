@@ -1,12 +1,11 @@
+{
+  "buildCommand": "cd frontend && npm install && npm run build",
+  "outputDirectory": "frontend/dist",
+  "framework": "vite",
+  "rewrites": [
     {
-  "root": "frontend",
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
-  "devCommand": "npm run dev",
-  "installCommand": "npm install",
-  "functions": {
-    "api/index.js": {
-      "runtime": "node20.x"
+      "source": "/api/:path*",
+      "destination": "https://your-backend-url.vercel.app/api/:path*"
     }
-  }
+  ]
 }

@@ -12,6 +12,7 @@ import {
 } from '@react-pdf/renderer';
 import { pdf } from '@react-pdf/renderer';
 import { getTemplate } from '../data/invoiceTemplates';
+import { calculateInvoice } from '../utils/invoiceCalculations';
 
 // Register fonts for better typography
 const styles = StyleSheet.create({
@@ -109,17 +110,17 @@ const PDFInvoice = ({ invoiceData, template = 'modern-clean' }) => {
   const templateConfig = getTemplate(template);
   const colors = templateConfig.colors;
 
-  // Calculate totals
-  const subtotal = invoiceData.items.reduce((sum, item) => 
-    sum + (item.quantity * item.price), 0
-  );
-  
-  const tax = (subtotal * invoiceData.taxRate) / 100;
-  const discount = invoiceData.discount || 0;
-  const total = subtotal + tax - discount;
+  // Use centralized calculation engine
+  const calculations = calculateInvoice({
+    items: invoiceData.items || [],
+    discount: invoiceData.discount || 0,
+    discountType: 'fixed',
+    taxRate: invoiceData.taxRate || 0,
+    taxBasis: 'subtotal'
+  });
 
   const formatCurrency = (amount) => {
-    return '₦' + amount.toLocaleString('en-NG', { minimumFractionDigits: 2 });
+    return '₦' + (parseFloat(amount) || 0).toLocaleString('en-NG', { minimumFractionDigits: 2 });
   };
 
   const formatDate = (date) => {
@@ -227,25 +228,25 @@ const PDFInvoice = ({ invoiceData, template = 'modern-clean' }) => {
         <View style={styles.totalsSection}>
           <View style={styles.totalRow}>
             <Text>Subtotal:</Text>
-            <Text>{formatCurrency(subtotal)}</Text>
+            <Text>{formatCurrency(calculations.subtotal)}</Text>
           </View>
 
-          {invoiceData.taxRate > 0 && (
+          {calculations.tax > 0 && (
             <View style={styles.totalRow}>
-              <Text>Tax ({invoiceData.taxRate}%):</Text>
-              <Text>{formatCurrency(tax)}</Text>
+              <Text>Tax ({calculations.tax}%):</Text>
+              <Text>{formatCurrency(calculations.taxAmount)}</Text>
             </View>
           )}
 
-          {discount > 0 && (
+          {calculations.discountAmount > 0 && (
             <View style={styles.totalRow}>
               <Text>Discount:</Text>
-              <Text style={{ color: '#ef4444' }}>-{formatCurrency(discount)}</Text>
+              <Text style={{ color: '#ef4444' }}>-{formatCurrency(calculations.discountAmount)}</Text>
             </View>
           )}
 
           <View style={styles.totalAmount}>
-            <Text>TOTAL: {formatCurrency(total)}</Text>
+            <Text>TOTAL: {formatCurrency(calculations.total)}</Text>
           </View>
         </View>
 

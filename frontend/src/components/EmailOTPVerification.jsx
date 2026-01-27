@@ -104,11 +104,30 @@ const EmailOTPVerification = () => {
       }
     } catch (err) {
       console.error('❌ Email OTP verification error:', err);
-      if (err.response?.data?.message === 'OTP expired') {
+      const errorMessage = err.response?.data?.message;
+      
+      if (errorMessage === 'OTP expired') {
         setError('⏱️ OTP expired. Please click "Resend OTP" to get a new code.');
-      } else if (err.response?.data?.message === 'Invalid OTP') {
+      } 
+      else if (errorMessage === 'Invalid OTP') {
         setError('❌ Invalid OTP. Please check and try again.');
-      } else {
+      } 
+      else if (errorMessage) {
+        setError('❌ ' + errorMessage);
+      }
+      else if (!err.response) {
+        console.error('Network error:', err.message);
+        setError('❌ Unable to connect. Please check your internet and try again.');
+      }
+      else if (err.response?.status === 404) {
+        console.error('404 Error - Verification service unavailable');
+        setError('❌ Verification service unavailable. Please try again shortly.');
+      }
+      else if (err.response?.status >= 500) {
+        console.error('Server error:', err.response?.status);
+        setError('❌ Our servers are experiencing issues. Please try again shortly.');
+      }
+      else {
         setError('❌ Verification failed. Please try again.');
       }
     } finally {
@@ -136,7 +155,25 @@ const EmailOTPVerification = () => {
       }
     } catch (err) {
       console.error('❌ Resend OTP error:', err);
-      setError('❌ Failed to resend OTP. Please try again.');
+      
+      if (err.response?.data?.message) {
+        setError('❌ ' + err.response.data.message);
+      }
+      else if (!err.response) {
+        console.error('Network error:', err.message);
+        setError('❌ Unable to send OTP. Please check your internet and try again.');
+      }
+      else if (err.response?.status === 404) {
+        console.error('404 Error - Resend OTP service unavailable');
+        setError('❌ OTP service unavailable. Please try again shortly.');
+      }
+      else if (err.response?.status >= 500) {
+        console.error('Server error:', err.response?.status);
+        setError('❌ Our servers are experiencing issues. Please try again shortly.');
+      }
+      else {
+        setError('❌ Failed to resend OTP. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }

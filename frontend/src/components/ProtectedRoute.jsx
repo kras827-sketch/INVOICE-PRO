@@ -29,7 +29,15 @@ const ProtectedRoute = ({ children }) => {
     return children;
   }
 
-  // ✅ Priority 2: Check localStorage (fallback for page refreshes)
+  // ✅ Priority 2: Check localStorage (fallback for page refreshes) - BROWSER ONLY
+  if (typeof window === 'undefined') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
   const storedUser = localStorage.getItem('user');
   const storedToken = localStorage.getItem('token');
   

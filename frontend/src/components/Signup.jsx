@@ -103,12 +103,29 @@ const Signup = () => {
     } catch (err) {
       console.error('❌ Signup error:', err);
 
+      // Handle specific backend errors
       if (err.response?.data?.message === 'Email already registered') {
         setError('❌ This email is already registered. Try logging in instead.');
       } else if (err.response?.data?.message) {
         setError('❌ ' + err.response.data.message);
-      } else {
-        setError('❌ Signup failed. Please try again.');
+      } 
+      // Handle network errors (no response from server)
+      else if (!err.response) {
+        console.error('Network error or server unreachable:', err.message);
+        setError('❌ Unable to connect to our servers. Please check your internet connection and try again.');
+      }
+      // Handle 404 and other HTTP errors
+      else if (err.response?.status === 404) {
+        console.error('404 Error - API endpoint not found');
+        setError('❌ Account creation service unavailable. Please try again shortly.');
+      }
+      else if (err.response?.status >= 500) {
+        console.error('Server error:', err.response?.status);
+        setError('❌ Our servers are experiencing issues. Please try again shortly.');
+      }
+      // Generic fallback
+      else {
+        setError('❌ Account creation failed. Please try again.');
       }
     } finally {
       setIsLoading(false);

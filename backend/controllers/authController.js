@@ -89,7 +89,11 @@ exports.signup = async (req, res) => {
 
   } catch (err) {
     console.error('❌ Signup error:', err);
-    res.status(500).json({ success: false, message: 'Server error during signup: ' + err.message });
+    // Don't expose technical error details to client
+    res.status(500).json({ 
+      success: false, 
+      message: 'Account creation failed. Please try again shortly.' 
+    });
   }
 };
 
@@ -299,21 +303,28 @@ exports.resendOTP = async (req, res) => {
     // Send OTP email
     const resendLogo = user.businessProfile?.logoUrl || '';
     const emailResult = await sendOTPEmail(email, otp, 'signup', resendLogo);
-    if (!emailResult.success) {
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Failed to send OTP email' 
-      });
+    
+    // ✅ Always return success to user, regardless of email delivery
+    // If email fails, we log it internally but don't expose it
+    if (emailResult.success) {
+      console.log(`✅ OTP resent to ${email}`);
+    } else {
+      console.error(`⚠️ OTP generated but email delivery failed for ${email}. User should receive it on retry.`);
+      // Still return success
     }
 
     res.json({
       success: true,
-      message: 'New OTP sent to your email'
+      message: 'If an account exists with this email, you will receive a new OTP'
     });
 
   } catch (err) {
     console.error('❌ Resend OTP error:', err);
-    res.status(500).json({ success: false, message: 'Server error' });
+    // Return generic error - don't expose server details
+    res.status(500).json({ 
+      success: false, 
+      message: 'Unable to process request. Please try again shortly.' 
+    });
   }
 };
 
@@ -339,7 +350,7 @@ exports.forgotPassword = async (req, res) => {
     // Find user
     const user = await User.findOne({ email });
     if (!user) {
-      // Don't reveal if user exists (security)
+      // Security: Don't reveal if user exists
       return res.json({
         success: true,
         message: 'If that email exists, you will receive a password reset OTP'
@@ -359,23 +370,29 @@ exports.forgotPassword = async (req, res) => {
     // Send OTP email
     const resetLogo = user.businessProfile?.logoUrl || '';
     const emailResult = await sendOTPEmail(email, otp, 'reset', resetLogo);
-    if (!emailResult.success) {
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Failed to send reset email' 
-      });
+    
+    // ✅ Always return success to user, regardless of email delivery
+    // This prevents attackers from knowing if an email is valid
+    // If email fails, we log it internally but don't expose it
+    if (emailResult.success) {
+      console.log(`✅ Password reset OTP sent to ${email}`);
+    } else {
+      console.error(`⚠️ OTP generated but email delivery failed for ${email}. User should receive it on retry.`);
+      // Still return success - user can retry if they don't receive email
     }
-
-    console.log(`✅ Password reset OTP sent to ${email}`);
 
     res.json({
       success: true,
-      message: 'Password reset OTP sent to your email'
+      message: 'If that email exists, you will receive a password reset OTP'
     });
 
   } catch (err) {
     console.error('❌ Forgot password error:', err);
-    res.status(500).json({ success: false, message: 'Server error' });
+    // Return generic error - don't expose server details
+    res.status(500).json({ 
+      success: false, 
+      message: 'Unable to process request. Please try again shortly.' 
+    });
   }
 };
 

@@ -23,11 +23,25 @@ const Dashboard = () => {
 
   useEffect(() => {
     // Reload data when user changes (including name updates from Settings)
+    // Also reload whenever component mounts or when navigation changes
     if (user) {
       console.log('👤 User updated on Dashboard:', user.name);
       loadData();
     }
   }, [user?.name, user?._id]); // Depend on name and _id to detect changes
+
+  // Also reload stats on dashboard focus
+  useEffect(() => {
+    const handleFocus = () => {
+      if (user) {
+        console.log('🔄 Dashboard refocused, reloading data...');
+        loadData();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [user]);
 
   const loadData = async () => {
     try {
@@ -49,6 +63,8 @@ const Dashboard = () => {
   };
 
   const handleDelete = async (id) => {
+    if (typeof window === 'undefined') return;
+    
     if (!window.confirm('Delete this invoice?')) return;
     
     try {
@@ -393,7 +409,12 @@ const Dashboard = () => {
                           <Eye className="h-5 w-5 inline" />
                         </button>
                         <button 
-                          onClick={() => window.open(`http://localhost:5000/api/invoices/pdf/${invoice._id}`, '_blank')} 
+                          onClick={() => {
+                            if (typeof window !== 'undefined') {
+                              const apiUrl = import.meta.env.VITE_API_URL || '/api';
+                              window.open(`${apiUrl}/invoices/pdf/${invoice._id}`, '_blank');
+                            }
+                          }} 
                           className="text-green-600 hover:text-green-700 transition"
                           title="Download PDF"
                         >

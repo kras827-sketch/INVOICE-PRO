@@ -9,6 +9,7 @@ import EmailOTPVerification from './components/EmailOTPVerification';
 import ForgotPassword from './components/ForgotPassword';
 import Dashboard from './components/Dashboard';
 import InvoiceForm from './components/InvoiceForm';
+import InvoiceDecision from './components/InvoiceDecision';
 import InvoiceViewer from './components/InvoiceViewer';
 import PricingPage from './components/PricingPage';
 import Settings from './components/Settings';
@@ -31,6 +32,7 @@ function App() {
             {/* Protected Routes */}
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/invoice/create" element={<ProtectedRoute><InvoiceForm /></ProtectedRoute>} />
+            <Route path="/invoice/decision" element={<ProtectedRoute><InvoiceDecision /></ProtectedRoute>} />
             <Route path="/invoice/:id" element={<ProtectedRoute><InvoiceViewer /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/thank-you" element={<ProtectedRoute><ThankYouPage /></ProtectedRoute>} />

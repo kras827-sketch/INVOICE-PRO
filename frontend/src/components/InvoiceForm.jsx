@@ -7,6 +7,7 @@ import InvoicePreview from './InvoicePreview';
 import { downloadInvoicePDF, generatePDFBlob } from '../services/pdfGenerator';
 import { generateInvoiceEmailHTML } from '../services/emailTemplates';
 import { INVOICE_TEMPLATES } from '../data/invoiceTemplates';
+import { calculateInvoice } from '../utils/invoiceCalculations';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
@@ -31,6 +32,19 @@ export default function InvoiceForm() {
       }
     } catch (err) {
       console.error('Failed to load default logo:', err);
+    }
+  }, [user]);
+
+  // Update invoice data when user loads (e.g., from Firebase)
+  useEffect(() => {
+    if (user) {
+      setInvoiceData(prev => ({
+        ...prev,
+        businessName: user?.businessProfile?.businessName || user?.displayName || user?.name || prev.businessName,
+        businessEmail: user?.businessProfile?.businessEmail || user?.email || prev.businessEmail,
+        businessPhone: user?.businessProfile?.businessPhone || prev.businessPhone,
+        businessAddress: user?.businessProfile?.businessAddress || prev.businessAddress,
+      }));
     }
   }, [user]);
   
@@ -76,43 +90,48 @@ export default function InvoiceForm() {
   const [loading, setLoading] = useState(false);
   const [itemIdCounter, setItemIdCounter] = useState(2);
 
-  // Calculate totals
+  // Calculate totals using centralized calculation engine
   const calculateTotals = () => {
-    const subtotal = invoiceData.items.reduce((sum, item) => 
-      sum + (item.quantity * item.rate), 0
-    );
-    const tax = (subtotal * invoiceData.taxRate) / 100;
-    const total = subtotal + tax - invoiceData.discount;
-    
-    return { subtotal, tax, total };
+    const calculations = calculateInvoice({
+      items: invoiceData.items || [],
+      discount: invoiceData.discount || 0,
+      discountType: 'fixed',
+      taxRate: invoiceData.taxRate || 0,
+      taxBasis: 'subtotal'
+    });
+    return {
+      subtotal: calculations.subtotal,
+      tax: calculations.taxAmount,
+      total: calculations.total
+    };
   };
 
   const { subtotal, tax, total } = calculateTotals();
 
   // Normalize invoice data to the structure used by Preview & PDF
   const normalizeInvoiceData = (data) => {
-    // Calculate totals
-    const subtotal = data.items.reduce((sum, item) => sum + (item.quantity * (item.rate || item.price || 0)), 0);
-    const taxAmount = (subtotal * (data.taxRate || 0)) / 100;
-    const total = subtotal + taxAmount - (data.discount || 0);
+    // Use centralized calculation engine for calculations only
+    const calculations = calculateInvoice({
+      items: data.items || [],
+      discount: data.discount || 0,
+      discountType: 'fixed',
+      taxRate: data.taxRate || 0,
+      taxBasis: 'subtotal'
+    });
+
+    // Map items to backend format
+    const formattedItems = data.items.map(item => ({
+      name: item.description || item.name || 'Item',
+      quantity: parseInt(item.quantity) || 1,
+      price: parseFloat(item.rate || item.price || 0)
+    }));
 
     return {
       ...data,
-      subtotal,
-      tax: taxAmount,
-      total,
-      businessLogo: useDefaultLogo
-        ? (user?.businessProfile?.logoUrl || logo || '')
-        : (data.businessLogo || logo || user?.businessProfile?.logoUrl || ''),
-      businessName: data.businessName || user?.businessProfile?.businessName || user?.name || '',
-      businessEmail: data.businessEmail || user?.businessProfile?.businessEmail || user?.email || '',
-      businessAddress: data.businessAddress || user?.businessProfile?.businessAddress || '',
-      items: data.items.map(item => ({
-        name: item.description || item.name || 'Item',
-        quantity: item.quantity,
-        price: item.rate || item.price || 0
-      })),
-      bankDetails: user?.businessProfile?.bankDetails || {}
+      subtotal: calculations.subtotal,
+      tax: calculations.taxAmount,
+      total: calculations.total,
+      items: formattedItems
     };
   };
   // Handle logo upload
@@ -180,21 +199,30 @@ export default function InvoiceForm() {
 
   // Save invoice to database
   const saveInvoiceToDB = async (normalized) => {
+    console.log('💾 [DB] saveInvoiceToDB called');
     try {
+      // Get authentication token
       let token;
       if (firebaseUser) {
+        console.log('💾 [DB] Getting Firebase token...');
         token = await firebaseUser.getIdToken();
+        console.log('💾 [DB] Firebase token obtained');
       } else {
+        console.log('💾 [DB] Checking localStorage for token...');
         token = localStorage.getItem('token');
+        if (token) console.log('💾 [DB] localStorage token found');
       }
 
       if (!token) {
-        throw new Error('Authentication required');
+        console.error('❌ [DB] NO TOKEN AVAILABLE');
+        throw new Error('🔐 Not authenticated. Please log in first.');
       }
+
+      console.log('💾 [DB] Token length:', token.length);
 
       // Format data according to backend Invoice model
       const invoicePayload = {
-        items: normalized.items, // Already formatted as [{name, quantity, price}]
+        items: normalized.items,
         client: {
           name: normalized.toName,
           email: normalized.toEmail,
@@ -216,141 +244,250 @@ export default function InvoiceForm() {
         template: normalized.template || 'modern-clean'
       };
 
-      console.log('💾 Invoice payload:', invoicePayload);
-
-      const apiUrl = `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/invoices/create`;
-      
-      const response = await axios.post(apiUrl, invoicePayload, {
-        headers: { 'Authorization': `Bearer ${token}` }
+      console.log('💾 [DB] Payload prepared:', {
+        itemCount: invoicePayload.items.length,
+        clientName: invoicePayload.client.name,
+        companyName: invoicePayload.company.name
       });
 
-      console.log('✅ Invoice saved to DB:', response.data.invoice?._id || response.data._id);
-      return response.data.invoice || response.data;
+      const apiUrl = `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/invoices/create`;
+      console.log('💾 [DB] API URL:', apiUrl);
+      console.log('💾 [DB] Making POST request...');
+      
+      const response = await axios.post(apiUrl, invoicePayload, {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      console.log('💾 [DB] Response received, status:', response.status);
+      console.log('💾 [DB] Response data:', response.data);
+
+      const savedData = response.data.invoice || response.data;
+      if (!savedData) {
+        console.error('❌ [DB] Response has no invoice data:', response.data);
+        throw new Error('Server returned empty response');
+      }
+
+      console.log('✅ [DB] Invoice saved successfully, ID:', savedData._id);
+      return savedData;
+      
     } catch (error) {
-      console.error('❌ Error saving invoice to DB:', error.response?.data || error.message);
-      // Continue even if DB save fails - user can still download/send
-      return null;
+      console.error('❌ [DB] CRITICAL ERROR in saveInvoiceToDB');
+      console.error('   Message:', error.message);
+      console.error('   Response status:', error.response?.status);
+      console.error('   Response data:', error.response?.data);
+      console.error('   Full error:', error);
+      
+      // Provide user-friendly error message
+      let userMessage = 'Failed to save invoice to database';
+      if (error.response?.status === 401) {
+        userMessage = '🔐 Authentication failed. Please log in again.';
+      } else if (error.response?.status === 400) {
+        userMessage = `❌ Validation error: ${error.response.data?.message || 'Invalid data'}`;
+      } else if (error.response?.status === 500) {
+        userMessage = '❌ Server error. Please try again.';
+      } else if (error.message.includes('Network')) {
+        userMessage = '❌ Network error. Check your connection.';
+      } else {
+        userMessage = error.response?.data?.message || error.message || userMessage;
+      }
+      
+      throw new Error(userMessage);
     }
   };
 
-  // Save invoice
-  const handleSave = async () => {
+  // Finish Create Invoice - Complete workflow
+  const handleFinish = async () => {
+    console.log('🖱️ [FINISH] Button handler called');
+    
     try {
-      if (!invoiceData.toName || invoiceData.toName.trim() === '') {
-        toast.error('Please enter client name');
+      // ========== STEP 1: VALIDATION ==========
+      console.log('🔍 [STEP 1] Validating all required fields...');
+      
+      // Client name
+      if (!invoiceData.toName?.trim()) {
+        toast.error('❌ Client name is required');
+        console.warn('[VALIDATION] Missing: Client name');
         return;
       }
-      
-      if (invoiceData.items.length === 0 || invoiceData.items.some(item => !item.description && !item.name)) {
-        toast.error('Please add at least one item with description');
+
+      // Client email
+      if (!invoiceData.toEmail?.trim()) {
+        toast.error('❌ Client email is required');
+        console.warn('[VALIDATION] Missing: Client email');
         return;
       }
+
+      // Business name
+      if (!invoiceData.businessName?.trim()) {
+        toast.error('❌ Business name is required');
+        console.warn('[VALIDATION] Missing: Business name');
+        return;
+      }
+
+      // Items validation
+      if (!Array.isArray(invoiceData.items) || invoiceData.items.length === 0) {
+        toast.error('❌ Add at least one invoice item');
+        console.warn('[VALIDATION] Missing: Items array');
+        return;
+      }
+
+      // Validate each item
+      for (let i = 0; i < invoiceData.items.length; i++) {
+        const item = invoiceData.items[i];
+        if (!item.description?.trim()) {
+          toast.error(`❌ Item ${i + 1}: Description is required`);
+          console.warn(`[VALIDATION] Item ${i} missing description`);
+          return;
+        }
+        if (!item.quantity || item.quantity <= 0) {
+          toast.error(`❌ Item ${i + 1}: Quantity must be greater than 0`);
+          console.warn(`[VALIDATION] Item ${i} invalid quantity:`, item.quantity);
+          return;
+        }
+        if (item.rate === null || item.rate === undefined || item.rate < 0) {
+          toast.error(`❌ Item ${i + 1}: Rate must be 0 or higher`);
+          console.warn(`[VALIDATION] Item ${i} invalid rate:`, item.rate);
+          return;
+        }
+      }
+
+      console.log('✅ [STEP 1] All validations passed');
       
-      setLoading(true);
-      console.log('💾 [SAVE] Starting invoice save...');
-      
+      // ========== STEP 2: NORMALIZE DATA ==========
+      console.log('📋 [STEP 2] Normalizing invoice data...');
       const normalized = normalizeInvoiceData({ ...invoiceData, businessLogo: logo });
+      console.log('✅ [STEP 2] Data normalized successfully', {
+        invoiceNumber: normalized.invoiceNumber,
+        clientName: normalized.toName,
+        items: normalized.items.length,
+        total: normalized.total
+      });
+
+      // ========== STEP 3: PREPARE FOR ASYNC ==========
+      setLoading(true);
+      console.log('⏳ [STEP 3] Setting loading state...');
+
+      // ========== STEP 4: SAVE TO DATABASE ==========
+      console.log('💾 [STEP 4] Saving invoice to database...');
+      const savedInvoice = await saveInvoiceToDB(normalized);
       
-      // Step 1: Save to database
-      console.log('💾 [SAVE] Saving to database...');
-      await saveInvoiceToDB(normalized);
-      
-      // Step 2: Generate PDF
-      console.log('💾 [SAVE] Generating PDF...');
-      const pdfBlob = await generatePDFBlob(normalized, selectedTemplate);
-      
+      if (!savedInvoice) {
+        throw new Error('Backend did not return invoice data');
+      }
+
+      const invoiceId = savedInvoice._id || savedInvoice.id;
+      if (!invoiceId) {
+        console.error('❌ [STEP 4] Server returned invoice without ID:', savedInvoice);
+        throw new Error('Invoice saved but no ID was returned');
+      }
+
+      console.log('✅ [STEP 4] Invoice saved to database', { 
+        id: invoiceId, 
+        number: savedInvoice.invoiceNumber 
+      });
+
+      // ========== STEP 5: GENERATE PDF ==========
+      console.log('📄 [STEP 5] Generating PDF...');
+      let pdfBlob;
+      try {
+        pdfBlob = await generatePDFBlob(normalized, selectedTemplate);
+      } catch (pdfError) {
+        console.error('❌ [STEP 5] PDF generation failed:', pdfError);
+        throw new Error(`PDF generation failed: ${pdfError.message}`);
+      }
+
       if (!pdfBlob || pdfBlob.size === 0) {
-        throw new Error('PDF generation failed');
+        console.error('❌ [STEP 5] PDF blob is invalid:', { size: pdfBlob?.size });
+        throw new Error('PDF blob is empty');
       }
+
+      console.log('✅ [STEP 5] PDF generated successfully', { 
+        size: `${(pdfBlob.size / 1024).toFixed(2)} KB` 
+      });
+
+      // ========== STEP 6: SUCCESS - PREPARE NAVIGATION ==========
+      console.log('🎉 [STEP 6] Invoice creation complete!');
       
-      // Step 3: Download PDF
-      console.log('💾 [SAVE] Downloading PDF...');
-      const filename = `Invoice-${invoiceData.invoiceNumber || 'draft'}-${Date.now()}.pdf`;
-      const url = URL.createObjectURL(pdfBlob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // Show success message to user
+      toast.success(`✅ Invoice ${normalized.invoiceNumber} created successfully!`);
+      console.log('📍 [STEP 6] Success toast shown to user');
       
-      setTimeout(() => URL.revokeObjectURL(url), 100);
+      console.log('📍 [STEP 6] Preparing to navigate to decision page...');
+      console.log('[STEP 6] Navigation state:', {
+        invoiceNumber: normalized.invoiceNumber,
+        invoiceId: invoiceId,
+        clientEmail: normalized.toEmail,
+        total: normalized.total,
+        pdfSize: pdfBlob.size
+      });
+
+      // ========== STEP 7: NAVIGATE TO DECISION PAGE ==========
+      console.log('🚀 [STEP 7] Navigating to /invoice/decision...');
       
-      console.log('✅ [SAVE] Invoice saved and downloaded');
-      toast.success('✅ Invoice saved and downloaded!');
-      
-      // Redirect to thank you page
-      setTimeout(() => {
-        navigate('/thank-you');
-      }, 1000);
+      navigate('/invoice/decision', {
+        state: {
+          invoiceData: normalized,
+          pdfBlob: pdfBlob,
+          savedInvoice: savedInvoice
+        }
+      });
+
+      console.log('✅ [STEP 7] Navigation initiated');
       
     } catch (error) {
-      console.error('❌ [SAVE] Error:', error);
-      toast.error(error.message || 'Failed to save invoice');
+      console.error('❌ [FATAL ERROR] Invoice creation failed');
+      console.error('   Error type:', error.constructor.name);
+      console.error('   Error message:', error.message);
+      console.error('   Full error object:', error);
+      if (error.stack) console.error('   Stack trace:', error.stack);
+      
+      // Show user-friendly error message
+      const userMessage = error.message || 'Failed to create invoice. Please try again.';
+      console.error(`   Showing toast to user: "${userMessage}"`);
+      toast.error(userMessage);
+      
     } finally {
+      console.log('🏁 [CLEANUP] Setting loading to false');
       setLoading(false);
     }
   };
 
-  // Download PDF
-  const handleDownload = async () => {
-    try {
-      if (invoiceData.items.length === 0) {
-        toast.error('Add at least one item to generate PDF');
-        return;
-      }
-      
-      setLoading(true);
-      console.log('📥 [DOWNLOAD] Starting PDF download...');
-      
-      const normalized = normalizeInvoiceData({ ...invoiceData, businessLogo: logo });
-      
-      // Save to database
-      console.log('📥 [DOWNLOAD] Saving to database...');
-      await saveInvoiceToDB(normalized);
-      
-      // Download PDF
-      console.log('📥 [DOWNLOAD] Downloading PDF...');
-      await downloadInvoicePDF(normalized, selectedTemplate);
-      
-      console.log('✅ [DOWNLOAD] PDF downloaded successfully');
-      toast.success('📥 Invoice PDF downloaded');
-      
-      // Redirect to thank you page
-      setTimeout(() => {
-        navigate('/thank-you');
-      }, 1000);
-      
-    } catch (error) {
-      console.error('❌ [DOWNLOAD] Error:', error);
-      toast.error(error.message || 'Failed to download PDF');
-    } finally {
-      setLoading(false);
-    }
-  };;
-
-  // Send email
+  // Send email - Optimized for immediate delivery (like OTP)
   const handleSendEmail = async () => {
+    // Pre-send validation (must complete before async operations)
     if (!invoiceData.toEmail || invoiceData.toEmail.trim() === '') {
-      toast.error('Enter recipient email address');
+      toast.error('Please enter recipient email address');
       return;
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(invoiceData.toEmail)) {
-      toast.error('Enter a valid email address');
+      toast.error('Please enter a valid email address');
       return;
     }
 
-    if (invoiceData.items.length === 0) {
-      toast.error('Add at least one item before sending');
+    if (invoiceData.items.length === 0 || invoiceData.items.some(item => !item.description && !item.name)) {
+      toast.error('Please add at least one item before sending');
+      return;
+    }
+
+    if (!invoiceData.toName || invoiceData.toName.trim() === '') {
+      toast.error('Please enter client name');
+      return;
+    }
+
+    if (!invoiceData.businessName || invoiceData.businessName.trim() === '') {
+      toast.error('Please enter business name');
       return;
     }
 
     try {
       setLoading(true);
-      console.log('📧 [EMAIL] Starting complete email workflow...');
+      console.log('📧 [EMAIL] Validation passed, starting email delivery...');
       
-      // Get token
+      // Get token immediately
       let token;
       if (firebaseUser) {
         token = await firebaseUser.getIdToken();
@@ -362,11 +499,11 @@ export default function InvoiceForm() {
         throw new Error('Authentication required - please log in again');
       }
 
-      console.log('📧 [EMAIL] Step 1: Saving invoice to database...');
+      console.log('📧 [EMAIL] Preparing invoice data...');
       const normalized = normalizeInvoiceData({ ...invoiceData, businessLogo: logo });
-      await saveInvoiceToDB(normalized);
 
-      console.log('📧 [EMAIL] Step 2: Generating PDF...');
+      // Generate PDF quickly in parallel with save
+      console.log('📧 [EMAIL] Generating PDF...');
       const pdfBlob = await generatePDFBlob(normalized, selectedTemplate);
       
       if (!pdfBlob || pdfBlob.size === 0) {
@@ -375,18 +512,18 @@ export default function InvoiceForm() {
       
       console.log('📧 [EMAIL] PDF generated:', pdfBlob.size, 'bytes');
 
-      console.log('📧 [EMAIL] Step 3: Sending email with PDF attachment...');
+      // Build email payload
       const formData = new FormData();
       formData.append('email', invoiceData.toEmail.trim());
       formData.append('subject', `Invoice ${invoiceData.invoiceNumber}`);
       formData.append('html', generateInvoiceEmailHTML(normalized));
       formData.append('pdf', pdfBlob, `${invoiceData.invoiceNumber}.pdf`);
 
+      // Send email IMMEDIATELY (like OTP)
+      console.log('📧 [EMAIL] Sending email to:', invoiceData.toEmail);
       const apiUrl = `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/email/send-invoice`;
-      console.log('📧 [EMAIL] API URL:', apiUrl);
-      console.log('📧 [EMAIL] Recipient:', invoiceData.toEmail);
-
-      const response = await axios.post(
+      
+      const emailResponse = axios.post(
         apiUrl,
         formData,
         { 
@@ -396,18 +533,30 @@ export default function InvoiceForm() {
         }
       );
 
-      console.log('📧 [EMAIL] Response:', response.status, response.data);
+      // SAVE TO DATABASE IN BACKGROUND (don't wait)
+      console.log('📧 [EMAIL] Saving invoice to database (background)...');
+      const saveToDB = saveInvoiceToDB(normalized).catch(err => {
+        console.warn('⚠️ [EMAIL] Background save failed:', err.message);
+        // Don't throw - email was already sent
+      });
 
-      if (response.data.success || response.status === 200) {
-        toast.success('✅ Invoice sent to ' + invoiceData.toEmail);
-        console.log('✅ [EMAIL] Complete workflow successful');
+      // Wait for email to complete
+      const emailResult = await emailResponse;
+      
+      console.log('📧 [EMAIL] Response:', emailResult.status, emailResult.data);
+
+      if (emailResult.data.success || emailResult.status === 200) {
+        console.log('✅ [EMAIL] Email sent successfully!');
         
-        // Redirect to thank you page
+        // Show success message immediately
+        toast.success('✅ Invoice emailed successfully');
+        
+        // Redirect after brief delay
         setTimeout(() => {
           navigate('/thank-you');
         }, 1000);
       } else {
-        throw new Error(response.data.message || 'Server returned error');
+        throw new Error(emailResult.data.message || 'Server returned error');
       }
       
     } catch (error) {
@@ -859,25 +1008,15 @@ export default function InvoiceForm() {
               {/* Action Buttons */}
               <div className="flex gap-3">
                 <button
-                  onClick={handleSave}
+                  onClick={() => {
+                    console.log('🖱️ [BUTTON] Finish Create Invoice clicked');
+                    handleFinish();
+                  }}
                   disabled={loading}
-                  className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 font-medium flex items-center justify-center gap-2"
+                  type="button"
+                  className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium flex items-center justify-center gap-2 transition shadow-lg"
                 >
-                  <FileText className="w-4 h-4" /> {loading ? 'Saving...' : 'Save Invoice'}
-                </button>
-                <button
-                  onClick={handleDownload}
-                  disabled={loading}
-                  className="flex-1 px-4 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 font-medium flex items-center justify-center gap-2"
-                >
-                  <Download className="w-4 h-4" /> {loading ? 'Generating...' : 'Download PDF'}
-                </button>
-                <button
-                  onClick={handleSendEmail}
-                  disabled={loading}
-                  className="flex-1 px-4 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 font-medium flex items-center justify-center gap-2"
-                >
-                  <Send className="w-4 h-4" /> {loading ? 'Sending...' : 'Send Email'}
+                  <FileText className="w-4 h-4" /> {loading ? 'Creating...' : 'Finish Create Invoice'}
                 </button>
               </div>
             </div>

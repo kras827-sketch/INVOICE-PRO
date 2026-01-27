@@ -9,14 +9,42 @@ const {
   generateOTPEmailPlainText,
 } = require('./emailTemplates');
 
-// Create transporter once
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+// Create transporter with explicit SMTP configuration
+const createTransporter = () => {
+  const emailService = process.env.EMAIL_SERVICE || 'gmail';
+  
+  if (emailService === 'sendgrid') {
+    return nodemailer.createTransport({
+      host: 'smtp.sendgrid.net',
+      port: 587,
+      secure: false, // Use TLS
+      auth: {
+        user: 'apikey',
+        pass: process.env.SENDGRID_API_KEY
+      },
+      connectionTimeout: 10000,
+      socketTimeout: 10000
+    });
+  }
+  
+  // Default to explicit Gmail SMTP configuration (not using service: 'gmail')
+  return nodemailer.createTransport({
+    host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.EMAIL_PORT || '587'),
+    secure: process.env.EMAIL_PORT === '465', // true for 465, false for 587
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS
+    },
+    connectionTimeout: 10000,
+    socketTimeout: 10000,
+    tls: {
+      rejectUnauthorized: false // Allow self-signed certificates
+    }
+  });
+};
+
+const transporter = createTransporter();
 
 // Generate a 6-digit OTP
 function generateOTP() {
@@ -32,6 +60,12 @@ function getOTPExpiry() {
 // logoUrl is optional and used to brand the email with the user's business logo
 async function sendOTPEmail(email, otp, purpose = 'signup', logoUrl = '') {
   try {
+    // Validate email format
+    if (!email || !email.includes('@')) {
+      console.error(`❌ Invalid email format: ${email}`);
+      return { success: false };
+    }
+
     const subject = purpose === 'signup' 
       ? 'Verify your InvoicePro account'
       : 'Reset your InvoicePro password';
@@ -42,7 +76,7 @@ async function sendOTPEmail(email, otp, purpose = 'signup', logoUrl = '') {
 
     const plainTextContent = generateOTPEmailPlainText(otp, purpose);
 
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: email,
       subject,
@@ -50,11 +84,19 @@ async function sendOTPEmail(email, otp, purpose = 'signup', logoUrl = '') {
       text: plainTextContent,
     });
 
-    console.log(`✅ OTP sent to ${email} for ${purpose}`);
-    return { success: true };
+    console.log(`✅ OTP sent to ${email} for ${purpose} (Message ID: ${info.messageId})`);
+    return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error(`❌ Failed to send OTP email to ${email}:`, error.message);
-    return { success: false, error: error.message };
+    // Log the full technical error internally
+    console.error(`❌ Failed to send OTP email to ${email}:`, {
+      errorMessage: error.message,
+      errorCode: error.code,
+      errorResponse: error.response,
+      details: error.toString()
+    });
+    
+    // Return generic failure - do NOT expose SMTP/technical details
+    return { success: false };
   }
 }
 

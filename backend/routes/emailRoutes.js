@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const emailService = require('../services/emailService');
+const invoiceEmailService = require('../services/invoiceEmailService');
+const otpService = require('../services/otpService');
 const { protect } = require('../middleware/authMiddleware');
 const User = require('../models/User');
 const multer = require('multer');
@@ -59,7 +61,8 @@ router.post('/send-invoice', protect, upload.single('pdf'), async (req, res) => 
     console.log('📑 Subject:', subject);
     console.log('📎 Attachment:', pdfBuffer ? `${pdfBuffer.length} bytes` : 'none');
 
-    const result = await emailService.sendInvoiceEmail({
+    // Use dedicated invoice email service for sending invoices
+    const result = await invoiceEmailService.sendInvoiceEmail({
       email,
       subject: subject || `Invoice ${invoiceNumber || 'Receipt'}`,
       htmlContent,
@@ -113,11 +116,11 @@ const generateSimpleInvoiceHTML = ({ invoiceNumber, clientName, amount, dueDate 
   `;
 };
 
-// POST /api/email/send-otp - Send OTP via email
+// POST /api/email/send-otp - Send OTP via email (uses OTP service)
 router.post('/send-otp', protect, async (req, res) => {
   try {
-    const { email, otp } = req.body;
-    const userId = req.user.uid;
+    const { email, otp, purpose = 'signup' } = req.body;
+    const userId = req.user._id || req.user.uid;
 
     if (!email || !otp) {
       return res.status(400).json({ message: 'Email and OTP required' });
@@ -125,13 +128,19 @@ router.post('/send-otp', protect, async (req, res) => {
 
     // Get user name
     const user = await User.findById(userId);
-    const userName = user?.displayName || 'User';
+    const userName = user?.name || user?.displayName || 'User';
+    const logoUrl = user?.businessProfile?.logoUrl || '';
 
-    const result = await emailService.sendOTPEmail({
-      email,
-      otp,
-      userName
-    });
+    // Use OTP service for sending OTP emails
+    const result = await otpService.sendOTPEmail(email, otp, purpose, logoUrl);
+
+    if (!result.success) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send OTP email',
+        error: result.error
+      });
+    }
 
     res.status(200).json({
       success: true,

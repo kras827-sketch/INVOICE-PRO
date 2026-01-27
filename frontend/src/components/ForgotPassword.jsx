@@ -36,15 +36,39 @@ const ForgotPassword = ({ onSuccess }) => {
       console.log('📧 Requesting password reset for:', email);
       const response = await api.post('/auth/forgot-password', { email });
 
-      if (response.data.success) {
+      // Check for explicit success response
+      if (response?.data?.success === true) {
+        console.log('✅ Password reset request successful, transitioning to OTP entry');
         setSuccess('✅ Check your email for the password reset code');
+        // Explicitly transition to reset step to allow OTP entry
         setStep('reset');
+        setOtp(''); // Clear any previous OTP
+        setError(''); // Clear any previous errors
       } else {
-        setError('❌ ' + (response.data.message || 'Request failed'));
+        // If response doesn't explicitly confirm success, show error
+        const errorMsg = response?.data?.message || 'Request failed';
+        console.warn('⚠️ Request returned non-success response:', errorMsg);
+        setError('❌ ' + errorMsg);
       }
     } catch (err) {
       console.error('❌ Forgot password error:', err);
-      setError('❌ Failed to process request. Please try again.');
+      
+      // Professional error messages that don't expose technical details
+      if (err.response?.data?.message) {
+        setError('❌ ' + err.response.data.message);
+      } else if (!err.response) {
+        console.error('Network error details:', err.message);
+        setError('❌ Unable to connect. Please check your internet connection and try again.');
+      } else if (err.response?.status === 404) {
+        console.error('404 Error - endpoint not found');
+        setError('❌ Password reset service unavailable. Please try again shortly.');
+      } else if (err.response?.status >= 500) {
+        console.error('Server error:', err.response?.status);
+        setError('❌ Our servers are experiencing issues. Please try again shortly.');
+      } else {
+        // For any other error, be generic to protect against information disclosure
+        setError('❌ We couldn\'t process your request. Please verify your email address and try again.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -90,12 +114,31 @@ const ForgotPassword = ({ onSuccess }) => {
       }
     } catch (err) {
       console.error('❌ Reset password error:', err);
-      if (err.response?.data?.message === 'OTP expired') {
+      const errorMessage = err.response?.data?.message;
+      
+      if (errorMessage === 'OTP expired') {
         setError('⏱️ Code expired. Please request a new one.');
         setStep('email');
-      } else if (err.response?.data?.message === 'Invalid OTP') {
+      } 
+      else if (errorMessage === 'Invalid OTP') {
         setError('❌ Invalid code. Please check and try again.');
-      } else {
+      } 
+      else if (errorMessage) {
+        setError('❌ ' + errorMessage);
+      }
+      else if (!err.response) {
+        console.error('Network error:', err.message);
+        setError('❌ Unable to connect. Please check your internet and try again.');
+      }
+      else if (err.response?.status === 404) {
+        console.error('404 Error - Password reset service unavailable');
+        setError('❌ Password reset service unavailable. Please try again shortly.');
+      }
+      else if (err.response?.status >= 500) {
+        console.error('Server error:', err.response?.status);
+        setError('❌ Our servers are experiencing issues. Please try again shortly.');
+      }
+      else {
         setError('❌ Password reset failed. Please try again.');
       }
     } finally {

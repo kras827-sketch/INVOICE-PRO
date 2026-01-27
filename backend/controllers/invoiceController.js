@@ -2,7 +2,7 @@
 // Invoice controllers - full implementations
 
 const Invoice = require('../models/Invoice');
-const emailService = require('../services/emailService');
+const invoiceEmailService = require('../services/invoiceEmailService');
 const PDFDocument = require('pdfkit');
 const stream = require('stream');
 
@@ -342,8 +342,8 @@ exports.sendInvoice = async (req, res) => {
       </html>
     `;
 
-    // Send email with attachment
-    const result = await emailService.sendInvoiceEmail({
+    // Send email with attachment using dedicated invoice email service
+    const result = await invoiceEmailService.sendInvoiceEmail({
       email: recipient,
       subject: `Invoice ${invoice.invoiceNumber}`,
       htmlContent,

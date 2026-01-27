@@ -2,6 +2,7 @@
 // Beautiful invoice preview that matches the PDF output
 
 import { getTemplate } from '../data/invoiceTemplates';
+import { calculateInvoice, formatCurrency } from '../utils/invoiceCalculations';
 
 const InvoicePreview = ({ 
   invoiceData, 
@@ -11,23 +12,14 @@ const InvoicePreview = ({
   const templateConfig = getTemplate(template);
   const colors = templateConfig.colors;
   
-  // Calculate totals
-  const subtotal = invoiceData.items.reduce((sum, item) => 
-    sum + (item.quantity * item.price), 0
-  );
-  
-  const tax = (subtotal * invoiceData.taxRate) / 100;
-  const discount = invoiceData.discount || 0;
-  const total = subtotal + tax - discount;
-
-  // Format currency for Nigeria (₦)
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency: 'NGN',
-      minimumFractionDigits: 2
-    }).format(amount);
-  };
+  // Use centralized calculation engine for consistency
+  const calculations = calculateInvoice({
+    items: invoiceData.items || [],
+    discount: invoiceData.discount || 0,
+    discountType: 'fixed',
+    taxRate: invoiceData.taxRate || 0,
+    taxBasis: 'subtotal'
+  });
 
   // Format date
   const formatDate = (date) => {
@@ -238,24 +230,24 @@ const InvoicePreview = ({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '50px', marginBottom: '10px' }}>
                 <div style={{ fontSize: '14px', textAlign: 'right' }}>Subtotal:</div>
                 <div style={{ fontSize: '14px', fontWeight: 'bold' }}>
-                  {formatCurrency(subtotal)}
+                  {formatCurrency(calculations.subtotal)}
                 </div>
               </div>
 
-              {invoiceData.taxRate > 0 && (
+              {calculations.tax > 0 && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '50px', marginBottom: '10px' }}>
-                  <div style={{ fontSize: '14px', textAlign: 'right' }}>Tax ({invoiceData.taxRate}%):</div>
+                  <div style={{ fontSize: '14px', textAlign: 'right' }}>Tax ({calculations.tax}%):</div>
                   <div style={{ fontSize: '14px', fontWeight: 'bold' }}>
-                    {formatCurrency(tax)}
+                    {formatCurrency(calculations.taxAmount)}
                   </div>
                 </div>
               )}
 
-              {discount > 0 && (
+              {calculations.discountAmount > 0 && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '50px', marginBottom: '10px' }}>
                   <div style={{ fontSize: '14px', textAlign: 'right' }}>Discount:</div>
                   <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#ef4444' }}>
-                    -{formatCurrency(discount)}
+                    -{formatCurrency(calculations.discountAmount)}
                   </div>
                 </div>
               )}
@@ -273,7 +265,7 @@ const InvoicePreview = ({
               >
                 <div style={{ fontSize: '16px', fontWeight: 'bold' }}>TOTAL:</div>
                 <div style={{ fontSize: '16px', fontWeight: 'bold' }}>
-                  {formatCurrency(total)}
+                  {formatCurrency(calculations.total)}
                 </div>
               </div>
             </div>

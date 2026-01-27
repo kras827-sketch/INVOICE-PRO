@@ -180,18 +180,26 @@ const invoiceSchema = new mongoose.Schema({
 
 /**
  * Calculate subtotal, tax, and total before saving
+ * Implements industry-standard invoice calculations including discount
  */
 invoiceSchema.pre('save', function(next) {
-  // Calculate subtotal from all items
+  // Step 1: Calculate subtotal from all items
   this.subtotal = this.items.reduce((sum, item) => {
     return sum + (item.quantity * item.price);
   }, 0);
   
-  // Calculate tax amount
-  this.taxAmount = (this.subtotal * this.taxRate) / 100;
+  // Step 2: Round subtotal to 2 decimals
+  this.subtotal = Math.round(this.subtotal * 100) / 100;
   
-  // Calculate final total
-  this.total = this.subtotal + this.taxAmount;
+  // Step 3: Calculate tax amount (on subtotal before discount)
+  this.taxAmount = Math.round((this.subtotal * this.taxRate) / 100 * 100) / 100;
+  
+  // Step 4: Apply discount (default 0 if not specified)
+  const discountAmount = Math.round((this.discount || 0) * 100) / 100;
+  
+  // Step 5: Calculate final total (subtotal + tax - discount)
+  // Math.max ensures total never goes negative
+  this.total = Math.max(0, Math.round((this.subtotal + this.taxAmount - discountAmount) * 100) / 100);
   
   next();
 });
@@ -226,9 +234,18 @@ invoiceSchema.statics.generateInvoiceNumber = async function(userId) {
 
 /**
  * Get user's invoice statistics
+ * Provides comprehensive analytics for dashboard
+ * 
+ * Returns:
+ * - totalInvoices: Count of all invoices
+ * - totalRevenue: Sum of all invoice totals (after discounts)
+ * - paidAmount: Sum of all payments received
+ * - pendingAmount: Sum of unpaid invoices (outstanding balance)
+ * - draftCount: Count of draft invoices
+ * - sentCount: Count of sent invoices
  * 
  * @param {string} userId - User's ID
- * @returns {object} - Statistics
+ * @returns {object} - Statistics object
  */
 invoiceSchema.statics.getUserStats = async function(userId) {
   const stats = await this.aggregate([
@@ -237,13 +254,35 @@ invoiceSchema.statics.getUserStats = async function(userId) {
       $group: {
         _id: null,
         totalInvoices: { $sum: 1 },
-        totalRevenue: { $sum: '$total' },
-        paidAmount: { $sum: '$paidAmount' },
-        pendingAmount: { 
-          $sum: { 
-            $cond: [{ $eq: ['$paymentStatus', 'unpaid'] }, '$total', 0] 
-          } 
+        totalRevenue: { $sum: '$total' }, // Already includes discount deduction
+        paidAmount: { 
+          $sum: {
+            $cond: [
+              { $eq: ['$paymentStatus', 'paid'] },
+              '$total',
+              0
+            ]
+          }
         },
+        pendingAmount: { 
+          $sum: {
+            $cond: [
+              { $ne: ['$paymentStatus', 'paid'] },
+              '$total',
+              0
+            ]
+          }
+        },
+        draftCount: {
+          $sum: {
+            $cond: [{ $eq: ['$status', 'draft'] }, 1, 0]
+          }
+        },
+        sentCount: {
+          $sum: {
+            $cond: [{ $eq: ['$status', 'sent'] }, 1, 0]
+          }
+        }
       },
     },
   ]);
@@ -253,6 +292,8 @@ invoiceSchema.statics.getUserStats = async function(userId) {
     totalRevenue: 0,
     paidAmount: 0,
     pendingAmount: 0,
+    draftCount: 0,
+    sentCount: 0,
   };
 };
 
