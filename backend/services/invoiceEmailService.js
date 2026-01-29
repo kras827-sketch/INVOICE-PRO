@@ -37,20 +37,20 @@ const getTransporter = () => {
       }
     });
   } else {
-    // Default fallback to Gmail
+    // Default fallback to Gmail with robust handling
     return nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 587,
-      secure: false,
+      host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+      port: parseInt(process.env.EMAIL_PORT || '465'),
+      secure: process.env.EMAIL_SECURE === 'true' || process.env.EMAIL_PORT === '465', 
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
       },
-      pool: {
-        maxConnections: 5,
-        maxMessages: 100,
-        rateDelta: 2000,
-        rateLimit: 5
+      // Disable pooling for serverless/Vercel to prevent timeouts
+      pool: false, 
+      tls: {
+        rejectUnauthorized: false,
+        ciphers: 'SSLv3'
       }
     });
   }

@@ -1,45 +1,31 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Mail, Save, FileText, CheckCircle } from 'lucide-react';
+import { Mail, Download, FileText, CheckCircle } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import axios from 'axios';
+import api from '../services/api';
+import { downloadInvoicePDF } from '../services/pdfGenerator';
 import toast from 'react-hot-toast';
 
 /**
- * Invoice Decision Page
- * Asks user: Send to email or save to dashboard?
- * Appears after user clicks Download PDF
+ * Invoice Decision Page (Post-Invoice Action Page)
+ * Options: Download Invoice or Send via Email
  */
 export default function InvoiceDecision() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isDarkMode } = useTheme();
-  const { firebaseUser } = useAuth();
   
   const invoiceData = location.state?.invoiceData || null;
   const pdfBlob = location.state?.pdfBlob || null;
   const savedInvoice = location.state?.savedInvoice || null;
-
-  console.log('📄 [DECISION] Component loaded');
-  console.log('📄 [DECISION] Received state:', {
-    hasInvoiceData: !!invoiceData,
-    invoiceNumber: invoiceData?.invoiceNumber,
-    hasPdfBlob: !!pdfBlob,
-    pdfSize: pdfBlob?.size,
-    hasSavedInvoice: !!savedInvoice,
-    invoiceId: savedInvoice?._id
-  });
 
   const [loading, setLoading] = useState(false);
   const [showEmailConfirm, setShowEmailConfirm] = useState(false);
   const [confirmEmail, setConfirmEmail] = useState(invoiceData?.toEmail || '');
 
   // Redirect back if no invoice data
-  if (!invoiceData || !pdfBlob) {
-    console.warn('⚠️ [DECISION] Missing required data, redirecting back');
-    console.warn('⚠️ [DECISION] invoiceData:', invoiceData);
-    console.warn('⚠️ [DECISION] pdfBlob:', pdfBlob);
+  if (!invoiceData) {
     return (
       <div className={`min-h-screen flex items-center justify-center ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
         <div className="text-center">
@@ -70,110 +56,71 @@ export default function InvoiceDecision() {
 
     try {
       setLoading(true);
-      console.log('📧 [DECISION] Sending invoice to email:', confirmEmail);
-
-      // Get auth token
-      let token;
-      if (firebaseUser) {
-        token = await firebaseUser.getIdToken();
-      } else {
-        token = localStorage.getItem('token');
-      }
-
-      if (!token) {
-        throw new Error('Authentication required');
-      }
-
+      
       // Build form data with PDF
       const formData = new FormData();
       formData.append('email', confirmEmail);
       formData.append('subject', `Invoice ${invoiceData.invoiceNumber}`);
       formData.append('html', generateSimpleInvoiceHTML(invoiceData));
-      formData.append('pdf', pdfBlob, `${invoiceData.invoiceNumber}.pdf`);
+      
+      // Use existing blob if available, otherwise simplified flow handles it
+      if (pdfBlob) {
+        formData.append('pdf', pdfBlob, `${invoiceData.invoiceNumber}.pdf`);
+      }
 
-      // Send email
-      const apiUrl = `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/email/send-invoice`;
-      const response = await axios.post(apiUrl, formData, {
-        headers: { 'Authorization': `Bearer ${token}` }
+      await api.post('/email/send-invoice', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
       });
 
-      console.log('✅ [DECISION] Email sent successfully');
-      
-      // Update invoice status to sent
+      // Update status to sent if we have the ID
       if (savedInvoice?._id) {
         try {
-          await axios.put(
-            `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/invoices/${savedInvoice._id}`,
-            { status: 'sent' },
-            { headers: { 'Authorization': `Bearer ${token}` } }
-          );
+          await api.put(`/invoices/${savedInvoice._id}`, { status: 'sent' });
         } catch (err) {
           console.warn('Failed to update invoice status:', err);
         }
       }
 
-      toast.success('✅ Invoice sent successfully to ' + confirmEmail);
+      toast.success('✅ Invoice sent successfully!');
       
-      // Navigate to dashboard
-      setTimeout(() => {
-        navigate('/dashboard');
-      }, 1500);
+      // Redirect to Thank You Page
+      navigate('/thank-you', {
+        state: {
+          title: 'Email Sent!',
+          subTitle: `Invoice sent to ${confirmEmail}`,
+          message: 'The invoice has been successfully emailed to your client. You can track its status in the dashboard.'
+        }
+      });
 
     } catch (error) {
       console.error('❌ [DECISION] Email send error:', error);
-      const errorMsg = error.response?.data?.message || error.message || 'Failed to send email';
-      toast.error(errorMsg);
+      toast.error(error.response?.data?.message || 'Failed to send email');
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle save to dashboard (no email)
-  const handleSaveDashboard = async () => {
+  // Handle Download
+  const handleDownload = async () => {
     try {
       setLoading(true);
-      console.log('💾 [DECISION] Saving invoice to dashboard (no email)');
-
-      // Get auth token
-      let token;
-      if (firebaseUser) {
-        token = await firebaseUser.getIdToken();
-      } else {
-        token = localStorage.getItem('token');
-      }
-
-      if (!token) {
-        throw new Error('Authentication required');
-      }
-
-      // Update invoice status to draft (saved but not sent)
-      if (savedInvoice?._id) {
-        try {
-          await axios.put(
-            `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/invoices/${savedInvoice._id}`,
-            { status: 'draft' },
-            { headers: { 'Authorization': `Bearer ${token}` } }
-          );
-        } catch (err) {
-          console.warn('Failed to update invoice status:', err);
-        }
-      }
-
-      console.log('✅ [DECISION] Invoice saved to dashboard');
+      await downloadInvoicePDF(invoiceData);
+      toast.success('✅ Invoice downloaded');
       
-      // Navigate to thank you page
-      navigate('/thank-you', {
-        state: {
-          title: 'Thank you',
-          message: 'Your invoice has been saved successfully and is now available on your dashboard.',
-          action: 'View Dashboard',
-          actionUrl: '/dashboard'
-        }
-      });
+      // Redirect to Thank You Page
+      setTimeout(() => {
+        navigate('/thank-you', {
+          state: {
+            title: 'Download Complete!',
+            subTitle: 'Invoice PDF has been downloaded.',
+            message: 'A copy of the invoice has also been saved to your dashboard.'
+          }
+        });
+      }, 1000);
 
     } catch (error) {
-      console.error('❌ [DECISION] Save error:', error);
-      toast.error(error.message || 'Failed to save invoice');
+      console.error('Download error:', error);
+      toast.error('Failed to download invoice');
     } finally {
       setLoading(false);
     }
@@ -181,18 +128,87 @@ export default function InvoiceDecision() {
 
   return (
     <div className={`min-h-screen ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'} py-12 px-4`}>
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-3xl mx-auto">
         {/* Header */}
         <div className="text-center mb-12">
           <div className="flex justify-center mb-4">
             <CheckCircle className="w-16 h-16 text-green-500" />
           </div>
           <h1 className={`text-3xl font-bold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-            Invoice Ready
+            Invoice completed successfully
           </h1>
           <p className={`text-lg ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            Invoice <span className="font-semibold">{invoiceData.invoiceNumber}</span> has been created successfully
+            Invoice <span className="font-semibold">{invoiceData.invoiceNumber}</span> has been created. What would you like to do next?
           </p>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Download Option */}
+          <button
+            onClick={handleDownload}
+            disabled={loading}
+            className={`p-8 rounded-xl border-2 transition ${
+              isDarkMode
+                ? 'bg-gray-800 border-gray-700 hover:border-blue-500 hover:bg-gray-750'
+                : 'bg-white border-gray-200 hover:border-blue-500 hover:bg-blue-50'
+            } disabled:opacity-50 text-left group`}
+          >
+            <div className="flex items-start mb-4">
+              <div className="p-3 rounded-lg bg-blue-100 group-hover:bg-blue-200 transition mr-4">
+                <Download className="w-6 h-6 text-blue-600" />
+              </div>
+              <div>
+                <h3 className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                  Download Invoice
+                </h3>
+                <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Save as PDF
+                </p>
+              </div>
+            </div>
+
+            <p className={`${isDarkMode ? 'text-gray-400' : 'text-gray-600'} mb-4`}>
+              Download a high-quality PDF version of this invoice for your records.
+            </p>
+
+            <div className={`flex items-center gap-2 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'} font-semibold`}>
+              <span>Download Now →</span>
+            </div>
+          </button>
+
+          {/* Send Email Option */}
+          <button
+            onClick={() => setShowEmailConfirm(true)}
+            disabled={loading}
+            className={`p-8 rounded-xl border-2 transition ${
+              isDarkMode
+                ? 'bg-gray-800 border-gray-700 hover:border-purple-500 hover:bg-gray-750'
+                : 'bg-white border-gray-200 hover:border-purple-500 hover:bg-purple-50'
+            } disabled:opacity-50 text-left group`}
+          >
+            <div className="flex items-start mb-4">
+              <div className="p-3 rounded-lg bg-purple-100 group-hover:bg-purple-200 transition mr-4">
+                <Mail className="w-6 h-6 text-purple-600" />
+              </div>
+              <div>
+                <h3 className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                  Send via Email
+                </h3>
+                <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Professional Template
+                </p>
+              </div>
+            </div>
+
+            <p className={`${isDarkMode ? 'text-gray-400' : 'text-gray-600'} mb-4`}>
+              Email the invoice PDF directly to your client with a professional message.
+            </p>
+
+            <div className={`flex items-center gap-2 ${isDarkMode ? 'text-purple-400' : 'text-purple-600'} font-semibold`}>
+              <span>Send Email →</span>
+            </div>
+          </button>
         </div>
 
         {/* Email Confirmation Modal */}
@@ -234,7 +250,7 @@ export default function InvoiceDecision() {
                 <button
                   onClick={handleSendEmail}
                   disabled={loading}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
+                  className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition"
                 >
                   {loading ? 'Sending...' : 'Send Invoice'}
                 </button>
@@ -243,101 +259,6 @@ export default function InvoiceDecision() {
           </div>
         )}
 
-        {/* Main Decision Buttons */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Send Email Option */}
-          <button
-            onClick={() => setShowEmailConfirm(true)}
-            disabled={loading}
-            className={`p-8 rounded-xl border-2 transition ${
-              isDarkMode
-                ? 'bg-gray-800 border-gray-700 hover:border-blue-500 hover:bg-gray-750'
-                : 'bg-white border-gray-200 hover:border-blue-500 hover:bg-blue-50'
-            } disabled:opacity-50 text-left group`}
-          >
-            <div className="flex items-start mb-4">
-              <div className="p-3 rounded-lg bg-blue-100 group-hover:bg-blue-200 transition mr-4">
-                <Mail className="w-6 h-6 text-blue-600" />
-              </div>
-              <div>
-                <h3 className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                  Send to Client
-                </h3>
-                <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Recommended
-                </p>
-              </div>
-            </div>
-
-            <p className={`${isDarkMode ? 'text-gray-400' : 'text-gray-600'} mb-4`}>
-              Send the invoice PDF directly to your client's email address
-            </p>
-
-            <div className={`flex items-center gap-2 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'} font-semibold`}>
-              <span>Send Now →</span>
-            </div>
-          </button>
-
-          {/* Save to Dashboard Option */}
-          <button
-            onClick={handleSaveDashboard}
-            disabled={loading}
-            className={`p-8 rounded-xl border-2 transition ${
-              isDarkMode
-                ? 'bg-gray-800 border-gray-700 hover:border-green-500 hover:bg-gray-750'
-                : 'bg-white border-gray-200 hover:border-green-500 hover:bg-green-50'
-            } disabled:opacity-50 text-left group`}
-          >
-            <div className="flex items-start mb-4">
-              <div className="p-3 rounded-lg bg-green-100 group-hover:bg-green-200 transition mr-4">
-                <Save className="w-6 h-6 text-green-600" />
-              </div>
-              <div>
-                <h3 className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                  Save for Later
-                </h3>
-                <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Alternative
-                </p>
-              </div>
-            </div>
-
-            <p className={`${isDarkMode ? 'text-gray-400' : 'text-gray-600'} mb-4`}>
-              Save the invoice to your dashboard. You can send it later from there.
-            </p>
-
-            <div className={`flex items-center gap-2 ${isDarkMode ? 'text-green-400' : 'text-green-600'} font-semibold`}>
-              <span>Save to Dashboard →</span>
-            </div>
-          </button>
-        </div>
-
-        {/* Invoice Summary */}
-        <div className={`mt-8 p-6 rounded-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
-          <h3 className={`font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-            Invoice Summary
-          </h3>
-          <div className={`space-y-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            <div className="flex justify-between">
-              <span>Invoice #:</span>
-              <span className="font-semibold">{invoiceData.invoiceNumber}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Client:</span>
-              <span className="font-semibold">{invoiceData.toName}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Email:</span>
-              <span className="font-semibold">{invoiceData.toEmail}</span>
-            </div>
-            <div className="flex justify-between pt-2 border-t border-gray-700">
-              <span className="font-semibold">Total Amount:</span>
-              <span className="font-bold text-lg text-blue-600">
-                ₦{(invoiceData.total || 0).toLocaleString('en-NG', { minimumFractionDigits: 2 })}
-              </span>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );

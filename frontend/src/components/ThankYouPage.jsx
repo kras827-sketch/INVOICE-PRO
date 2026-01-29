@@ -1,10 +1,17 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { CheckCircle, ArrowRight } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 
 export default function ThankYouPage() {
   const navigate = useNavigate();
   const { isDarkMode } = useTheme();
+  const location = useLocation();
+  
+  const { 
+    title = "Thank You!",
+    subTitle = "Your invoice has been successfully processed.",
+    message = "You can now view all your invoices and analytics on the dashboard."
+  } = location.state || {};
 
   const handleDone = () => {
     navigate('/dashboard', { replace: true });
@@ -23,21 +30,17 @@ export default function ThankYouPage() {
 
         {/* Main Message */}
         <h1 className={`text-4xl font-bold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-          Thank You!
+          {title}
         </h1>
 
         {/* Subheading */}
-        <p className={`text-lg mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-          Your invoice has been successfully
-        </p>
         <p className={`text-lg mb-8 font-semibold ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>
-          created, saved, and sent! 🎉
+          {subTitle}
         </p>
 
         {/* Description */}
         <p className={`text-sm mb-12 leading-relaxed ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-          Your invoice has been saved as a PDF and sent to the client via email. 
-          You can now view all your invoices and analytics on the dashboard.
+          {message}
         </p>
 
         {/* Features List */}

@@ -30,16 +30,18 @@ const createTransporter = () => {
   // Default to explicit Gmail SMTP configuration (not using service: 'gmail')
   return nodemailer.createTransport({
     host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.EMAIL_PORT || '587'),
-    secure: process.env.EMAIL_PORT === '465', // true for 465, false for 587
+    port: parseInt(process.env.EMAIL_PORT || '465'), // Default to 465 (SSL) if not specified
+    secure: process.env.EMAIL_SECURE === 'true' || process.env.EMAIL_PORT === '465', // true for 465, false for 587
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS
     },
-    connectionTimeout: 10000,
-    socketTimeout: 10000,
+    // Vercel/Serverless optimizations
+    pool: false, // Disable pooling in serverless to avoid hanging connections
+    attachDataUrls: true,
     tls: {
-      rejectUnauthorized: false // Allow self-signed certificates
+      rejectUnauthorized: false, // Help with some strict server varifications
+      ciphers: 'SSLv3'
     }
   });
 };

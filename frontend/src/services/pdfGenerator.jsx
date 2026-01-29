@@ -308,7 +308,16 @@ export const downloadInvoicePDF = async (invoiceData, template = 'modern-clean')
     const token = localStorage.getItem('token');
     if (token && invoiceData._id) {
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/invoices/pdf/${invoiceData._id}`, {
+        // Determine API URL (same logic as api.js)
+        const getApiUrl = () => {
+           if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+           if (window.location.hostname === 'localhost') return 'http://localhost:5000';
+           return ''; // Relative path fallback
+        };
+        const apiUrl = getApiUrl();
+        const baseUrl = apiUrl ? (apiUrl.endsWith('/api') ? apiUrl : `${apiUrl}/api`) : '/api';
+        
+        const response = await fetch(`${baseUrl}/invoices/pdf/${invoiceData._id}`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`,

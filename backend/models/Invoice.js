@@ -71,7 +71,7 @@ const invoiceSchema = new mongoose.Schema({
     },
     address: {
       type: String,
-      required: true,
+      default: '',
     },
     email: String,
     phone: String,
@@ -87,7 +87,7 @@ const invoiceSchema = new mongoose.Schema({
     },
     address: {
       type: String,
-      required: true,
+      default: '',
     },
     email: String,
     phone: String,
@@ -100,10 +100,10 @@ const invoiceSchema = new mongoose.Schema({
     validate: [array => array.length > 0, 'At least one item is required'],
   },
   
-  // Financial calculations
+  // Financial calculations (auto-calculated by pre-save middleware)
   subtotal: {
     type: Number,
-    required: true,
+    default: 0,
     min: 0,
   },
   
@@ -122,7 +122,7 @@ const invoiceSchema = new mongoose.Schema({
   
   total: {
     type: Number,
-    required: true,
+    default: 0,
     min: 0,
   },
   
@@ -140,7 +140,7 @@ const invoiceSchema = new mongoose.Schema({
   // Invoice status
   status: {
     type: String,
-    enum: ['draft', 'sent', 'paid', 'overdue', 'cancelled'],
+    enum: ['draft', 'sent', 'paid', 'overdue', 'cancelled', 'completed'],
     default: 'draft',
   },
   

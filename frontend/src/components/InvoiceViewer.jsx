@@ -23,8 +23,32 @@ export default function InvoiceViewer() {
     const fetchInvoice = async () => {
       try {
         const res = await api.get(`/invoices/${id}`);
-        setInvoice(res.data.invoice || res.data);
+        const fetchedInvoice = res.data.invoice || res.data;
+        
+        // Normalize Backend Data for Viewer
+        const normalized = {
+          ...fetchedInvoice,
+          // Map Backend Company Fields -> Viewer Expected Fields
+          senderName: fetchedInvoice.company?.name || fetchedInvoice.senderName,
+          senderEmail: fetchedInvoice.company?.email || fetchedInvoice.senderEmail,
+          senderPhone: fetchedInvoice.company?.phone || fetchedInvoice.senderPhone,
+          senderAddress: fetchedInvoice.company?.address || fetchedInvoice.senderAddress,
+          // Map Backend Client Fields -> Viewer Expected Fields
+          clientName: fetchedInvoice.client?.name || fetchedInvoice.clientName,
+          clientEmail: fetchedInvoice.client?.email || fetchedInvoice.clientEmail,
+          clientPhone: fetchedInvoice.client?.phone || fetchedInvoice.clientPhone,
+          clientAddress: fetchedInvoice.client?.address || fetchedInvoice.clientAddress,
+          // Map Backend Item Fields -> Viewer Expected Fields
+          items: fetchedInvoice.items?.map(item => ({
+            ...item,
+            description: item.name || item.description,
+            rate: item.price !== undefined ? item.price : item.rate
+          })) || []
+        };
+        
+        setInvoice(normalized);
       } catch (err) {
+        console.error("Error fetching invoice:", err);
         toast.error('Failed to load invoice');
         navigate('/dashboard');
       } finally {
@@ -130,7 +154,7 @@ export default function InvoiceViewer() {
             Invoice {invoice.invoiceNumber}
           </h1>
           <div className={`px-4 py-2 rounded-full ${invoice.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-            {invoice.status === 'paid' ? 'Paid' : 'Pending'}
+            {invoice.status === 'paid' ? 'Paid' : invoice.status === 'completed' ? 'Completed' : 'Pending'}
           </div>
         </div>
 
@@ -175,9 +199,9 @@ export default function InvoiceViewer() {
                       <tr key={idx} className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                         <td className={`py-3 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>{item.description}</td>
                         <td className={`py-3 text-right ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>{item.quantity}</td>
-                        <td className={`py-3 text-right ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>${item.rate.toFixed(2)}</td>
+                        <td className={`py-3 text-right ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>${(parseFloat(item.rate) || 0).toFixed(2)}</td>
                         <td className={`py-3 text-right font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                          ${(item.quantity * item.rate).toFixed(2)}
+                          ${((item.quantity || 0) * (item.rate || 0)).toFixed(2)}
                         </td>
                       </tr>
                     ))}
@@ -267,7 +291,7 @@ export default function InvoiceViewer() {
               <div className="flex justify-between">
                 <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>Date:</span>
                 <span className={isDarkMode ? 'text-white' : 'text-gray-900'}>
-                  {new Date(invoice.date).toLocaleDateString()}
+                  {new Date(invoice.invoiceDate || invoice.date).toLocaleDateString()}
                 </span>
               </div>
               <div className="flex justify-between">

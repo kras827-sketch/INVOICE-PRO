@@ -17,61 +17,82 @@ const Dashboard = () => {
   const { isDarkMode, toggleTheme } = useTheme();
   const [invoices, setInvoices] = useState([]);
   const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [invoicesLoading, setInvoicesLoading] = useState(true);
+  const [statsLoading, setStatsLoading] = useState(true);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [subscription, setSubscription] = useState({ plan: 'free' });
 
   useEffect(() => {
-    // Reload data when user changes (including name updates from Settings)
-    // Also reload whenever component mounts or when navigation changes
     if (user) {
-      console.log('👤 User updated on Dashboard:', user.name);
-      loadData();
+      // Load data independently for better perceived performance
+      loadInvoices();
+      loadStats();
     }
-  }, [user?.name, user?._id]); // Depend on name and _id to detect changes
+  }, [user?.name, user?._id]);
 
-  // Also reload stats on dashboard focus
+  // Refocus handler
   useEffect(() => {
     const handleFocus = () => {
       if (user) {
-        console.log('🔄 Dashboard refocused, reloading data...');
-        loadData();
+        // Silently update in background
+        loadInvoices(false); 
+        loadStats(false);
       }
     };
-
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
   }, [user]);
 
-  const loadData = async () => {
+  const loadInvoices = async (showLoading = true) => {
     try {
-      const [invoicesRes, statsRes] = await Promise.all([
-        api.get('/invoices'),
-        api.get('/invoices/stats'),
-      ]);
-      setInvoices(invoicesRes.data.invoices);
-      setStats(statsRes.data.stats);
-      // Get subscription from user profile
-      if (user?.subscription) {
-        setSubscription(user.subscription);
-      }
+      if (showLoading) setInvoicesLoading(true);
+      const res = await api.get('/invoices');
+      setInvoices(res.data.invoices);
     } catch (error) {
-      console.error('Error loading data:', error);
+      console.error('Error loading invoices:', error);
     } finally {
-      setLoading(false);
+      if (showLoading) setInvoicesLoading(false);
+    }
+  };
+
+  const loadStats = async (showLoading = true) => {
+    try {
+      if (showLoading) setStatsLoading(true);
+      const res = await api.get('/invoices/stats');
+      setStats(res.data.stats);
+      if (user?.subscription) setSubscription(user.subscription);
+    } catch (error) {
+      console.error('Error loading stats:', error);
+    } finally {
+      if (showLoading) setStatsLoading(false);
     }
   };
 
   const handleDelete = async (id) => {
     if (typeof window === 'undefined') return;
-    
     if (!window.confirm('Delete this invoice?')) return;
-    
     try {
       await api.delete(`/invoices/${id}`);
-      loadData();
+      loadInvoices(false); // Reload list without full spinner
+      loadStats(false);    // Reload stats silenty
     } catch (error) {
       alert('Error deleting invoice');
+    }
+  };
+
+  // Mark invoice as paid
+  const handleMarkPaid = async (id) => {
+    try {
+      await api.put(`/invoices/${id}`, { 
+        status: 'paid',
+        paymentStatus: 'paid',
+        paidDate: new Date().toISOString()
+      });
+      loadInvoices(false);
+      loadStats(false);
+    } catch (error) {
+      console.error('Error marking invoice as paid:', error);
+      alert('Error updating invoice status');
     }
   };
 
@@ -105,17 +126,20 @@ const Dashboard = () => {
   const formatCurrency = (amount) => {
     return '₦' + amount.toLocaleString('en-NG', { minimumFractionDigits: 2 });
   };
-
-  if (loading) {
-    return (
-      <div className={`min-h-screen flex items-center justify-center ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className={`mt-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Loading dashboard...</p>
+    // Skeleton Loader Component
+  const StatsSkeleton = () => (
+    <div className={`rounded-xl shadow-md p-6 border-l-4 border-gray-300 animate-pulse ${
+      isDarkMode ? 'bg-gray-800' : 'bg-white'
+    }`}>
+      <div className="flex items-center justify-between">
+        <div className="space-y-3 w-full">
+          <div className="h-4 bg-gray-300 rounded w-1/2"></div>
+          <div className="h-8 bg-gray-300 rounded w-3/4"></div>
         </div>
+        <div className="h-10 w-10 bg-gray-300 rounded-full"></div>
       </div>
-    );
-  }
+    </div>
+  );
 
   return (
     <div className={`min-h-screen ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
@@ -233,71 +257,80 @@ const Dashboard = () => {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className={`rounded-xl shadow-md p-6 border-l-4 border-blue-600 transition ${
-            isDarkMode ? 'bg-gray-800 hover:bg-gray-750' : 'bg-white hover:shadow-lg'
-          }`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className={`text-sm mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                  Total Invoices
-                </p>
-                <p className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                  {stats?.totalInvoices || 0}
-                </p>
-              </div>
-              <FileText className="h-10 w-10 text-blue-600 opacity-50" />
-            </div>
+        {statsLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <StatsSkeleton />
+            <StatsSkeleton />
+            <StatsSkeleton />
+            <StatsSkeleton />
           </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div className={`rounded-xl shadow-md p-6 border-l-4 border-blue-600 transition ${
+              isDarkMode ? 'bg-gray-800 hover:bg-gray-750' : 'bg-white hover:shadow-lg'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className={`text-sm mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    Total Invoices
+                  </p>
+                  <p className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                    {stats?.totalInvoices || 0}
+                  </p>
+                </div>
+                <FileText className="h-10 w-10 text-blue-600 opacity-50" />
+              </div>
+            </div>
 
-          <div className={`rounded-xl shadow-md p-6 border-l-4 border-green-600 transition ${
-            isDarkMode ? 'bg-gray-800 hover:bg-gray-750' : 'bg-white hover:shadow-lg'
-          }`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className={`text-sm mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                  Total Revenue
-                </p>
-                <p className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                  {formatCurrency(stats?.totalRevenue || 0)}
-                </p>
+            <div className={`rounded-xl shadow-md p-6 border-l-4 border-green-600 transition ${
+              isDarkMode ? 'bg-gray-800 hover:bg-gray-750' : 'bg-white hover:shadow-lg'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className={`text-sm mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    Total Revenue
+                  </p>
+                  <p className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                    {formatCurrency(stats?.totalRevenue || 0)}
+                  </p>
+                </div>
+                <DollarSign className="h-10 w-10 text-green-600 opacity-50" />
               </div>
-              <DollarSign className="h-10 w-10 text-green-600 opacity-50" />
             </div>
-          </div>
 
-          <div className={`rounded-xl shadow-md p-6 border-l-4 border-green-500 transition ${
-            isDarkMode ? 'bg-gray-800 hover:bg-gray-750' : 'bg-white hover:shadow-lg'
-          }`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className={`text-sm mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                  Paid Invoices
-                </p>
-                <p className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                  {formatCurrency(stats?.paidAmount || 0)}
-                </p>
+            <div className={`rounded-xl shadow-md p-6 border-l-4 border-green-500 transition ${
+              isDarkMode ? 'bg-gray-800 hover:bg-gray-750' : 'bg-white hover:shadow-lg'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className={`text-sm mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    Paid Invoices
+                  </p>
+                  <p className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                    {formatCurrency(stats?.paidAmount || 0)}
+                  </p>
+                </div>
+                <CheckCircle className="h-10 w-10 text-green-500 opacity-50" />
               </div>
-              <CheckCircle className="h-10 w-10 text-green-500 opacity-50" />
             </div>
-          </div>
 
-          <div className={`rounded-xl shadow-md p-6 border-l-4 border-orange-600 transition ${
-            isDarkMode ? 'bg-gray-800 hover:bg-gray-750' : 'bg-white hover:shadow-lg'
-          }`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className={`text-sm mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                  Unpaid Amount
-                </p>
-                <p className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                  {formatCurrency(stats?.pendingAmount || 0)}
-                </p>
+            <div className={`rounded-xl shadow-md p-6 border-l-4 border-orange-600 transition ${
+              isDarkMode ? 'bg-gray-800 hover:bg-gray-750' : 'bg-white hover:shadow-lg'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className={`text-sm mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    Unpaid Amount
+                  </p>
+                  <p className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                    {formatCurrency(stats?.pendingAmount || 0)}
+                  </p>
+                </div>
+                <Clock className="h-10 w-10 text-orange-600 opacity-50" />
               </div>
-              <Clock className="h-10 w-10 text-orange-600 opacity-50" />
             </div>
           </div>
-        </div>
+        )}
 
         {/* Create Invoice Button */}
         <div className="mb-6 flex justify-between items-center">
@@ -315,7 +348,12 @@ const Dashboard = () => {
 
         {/* Invoices Table */}
         <div className={`rounded-xl shadow-md overflow-hidden ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
-          {invoices.length === 0 ? (
+          {invoicesLoading ? (
+             <div className="p-12 text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p className={`${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Loading invoices...</p>
+             </div>
+          ) : invoices.length === 0 ? (
             <div className="p-12 text-center">
               <FileText className={`h-16 w-16 mx-auto mb-4 ${isDarkMode ? 'text-gray-600' : 'text-gray-300'}`} />
               <h3 className={`text-xl font-semibold mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
@@ -420,6 +458,21 @@ const Dashboard = () => {
                         >
                           <Download className="h-5 w-5 inline" />
                         </button>
+                        {invoice.status !== 'paid' ? (
+                          <button 
+                            onClick={() => handleMarkPaid(invoice._id)} 
+                            className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold rounded-full transition shadow-sm"
+                            title="Mark as Paid"
+                          >
+                            <CheckCircle className="h-4 w-4" />
+                            <span>Mark Paid</span>
+                          </button>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
+                            <CheckCircle className="h-4 w-4" />
+                            <span>Paid</span>
+                          </span>
+                        )}
                         <button 
                           onClick={() => handleDelete(invoice._id)} 
                           className="text-red-600 hover:text-red-700 transition"

@@ -34,6 +34,7 @@ function App() {
             <Route path="/invoice/create" element={<ProtectedRoute><InvoiceForm /></ProtectedRoute>} />
             <Route path="/invoice/decision" element={<ProtectedRoute><InvoiceDecision /></ProtectedRoute>} />
             <Route path="/invoice/:id" element={<ProtectedRoute><InvoiceViewer /></ProtectedRoute>} />
+            <Route path="/invoice/:id/edit" element={<ProtectedRoute><InvoiceForm /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/thank-you" element={<ProtectedRoute><ThankYouPage /></ProtectedRoute>} />
 
