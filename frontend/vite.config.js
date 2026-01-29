@@ -18,6 +18,15 @@ export default defineConfig({
   build: {
     // Production build configuration
     outDir: 'dist',
-    sourcemap: false
+    sourcemap: false,
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          utils: ['axios', 'lucide-react', 'react-hot-toast']
+        }
+      }
+    }
   }
 })
