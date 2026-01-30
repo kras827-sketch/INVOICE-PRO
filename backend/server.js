@@ -33,7 +33,10 @@ app.use(cors({
   origin: [
     process.env.FRONTEND_URL || 'http://localhost:5173',
     'http://localhost:5174',
-    'http://localhost:3000'
+    'http://localhost:3000',
+    // Firebase Hosting
+    'https://invoice-api-78823.web.app',
+    'https://invoice-api-78823.firebaseapp.com'
   ],
   credentials: true
 }));
