@@ -1,8 +1,9 @@
 node_modules
-.vercel
+.firebase
 .env
 .env.local
 .env.*.local
 .DS_Store
 *.pem
 uploads/
+functions/.env

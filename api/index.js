@@ -1,4 +1,4 @@
-// api/index.js - Vercel serverless backend entry point
+// api/index.js - Firebase Cloud Functions backend entry point
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
@@ -17,18 +17,21 @@ app.use(cors({
       'http://localhost:5173',
       'http://localhost:3000',
       process.env.FRONTEND_URL,
-      // Add wildcard for preview deployments if needed or just handle dynamically
+      // Firebase Hosting domains
+      'https://invoice-api-78823.web.app',
+      'https://invoice-api-78823.firebaseapp.com',
     ];
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
-    // Check if origin matches allowed or is a vercel subdomain
-    if (allowedOrigins.indexOf(origin) !== -1 || origin.endsWith('.vercel.app')) {
+    // Check if origin matches allowed or is a Firebase subdomain
+    if (allowedOrigins.indexOf(origin) !== -1 || origin.endsWith('.web.app') || origin.endsWith('.firebaseapp.com')) {
       callback(null, true);
     } else {
       console.warn('Blocked by CORS:', origin);
       callback(new Error('Not allowed by CORS'));
     }
+
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
@@ -92,5 +95,5 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Export for Vercel
+// Export for Firebase Cloud Functions
 module.exports = app;
