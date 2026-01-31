@@ -9,7 +9,7 @@
  * @param {string} email - User's email address
  * @returns {string} - HTML email content
  */
-function generateOTPEmailSignup(otp, email, logoUrl = '') {
+function generateOTPEmailSignup(otp, email, logoUrl = '', baseUrl = 'https://invoice-generator-saas.vercel.app') {
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -80,7 +80,7 @@ function generateOTPEmailSignup(otp, email, logoUrl = '') {
 
             <!-- CTA Button -->
             <div style="text-align: center; margin-bottom: 28px;">
-                <a href="https://app.invoicepro.com" style="display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 8px; font-weight: 600; font-size: 14px; transition: opacity 0.2s;">
+                <a href="${baseUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 8px; font-weight: 600; font-size: 14px; transition: opacity 0.2s;">
                     Go to InvoicePro
                 </a>
             </div>
@@ -121,7 +121,7 @@ function generateOTPEmailSignup(otp, email, logoUrl = '') {
  * @param {string} email - User's email address
  * @returns {string} - HTML email content
  */
-function generateOTPEmailPasswordReset(otp, email, logoUrl = '') {
+function generateOTPEmailPasswordReset(otp, email, logoUrl = '', baseUrl = 'https://invoice-generator-saas.vercel.app') {
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -200,7 +200,7 @@ function generateOTPEmailPasswordReset(otp, email, logoUrl = '') {
 
             <!-- CTA Button -->
             <div style="text-align: center; margin-bottom: 28px;">
-                <a href="https://app.invoicepro.com/forgot-password" style="display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 8px; font-weight: 600; font-size: 14px; transition: opacity 0.2s;">
+                <a href="${baseUrl}/reset-password" style="display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 8px; font-weight: 600; font-size: 14px; transition: opacity 0.2s;">
                     Reset Password
                 </a>
             </div>

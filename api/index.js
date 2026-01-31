@@ -20,6 +20,9 @@ app.use(cors({
       // Firebase Hosting domains
       'https://invoice-api-78823.web.app',
       'https://invoice-api-78823.firebaseapp.com',
+      // Vercel
+      process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
+      process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : undefined,
     ];
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
@@ -62,6 +65,14 @@ const connectDB = async () => {
     console.error('MongoDB connection error:', err);
   }
 };
+
+// ✅ CRITICAL: Middleware to ensure DB is connected before handling requests
+app.use(async (req, res, next) => {
+  if (req.path.startsWith('/api')) {
+    await connectDB();
+  }
+  next();
+});
 
 // Routes - Initialize Firebase first
 try {

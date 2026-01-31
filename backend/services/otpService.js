@@ -58,6 +58,13 @@ function getOTPExpiry() {
   return new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 }
 
+// Helper to get the base URL for links
+const getBaseUrl = () => {
+  if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return 'http://localhost:3000';
+};
+
 // Send OTP via email with styled templates
 // logoUrl is optional and used to brand the email with the user's business logo
 async function sendOTPEmail(email, otp, purpose = 'signup', logoUrl = '') {
@@ -72,9 +79,11 @@ async function sendOTPEmail(email, otp, purpose = 'signup', logoUrl = '') {
       ? 'Verify your InvoicePro account'
       : 'Reset your InvoicePro password';
 
+    const baseUrl = getBaseUrl();
+
     const htmlContent = purpose === 'signup'
-      ? generateOTPEmailSignup(otp, email, logoUrl)
-      : generateOTPEmailPasswordReset(otp, email, logoUrl);
+      ? generateOTPEmailSignup(otp, email, logoUrl, baseUrl)
+      : generateOTPEmailPasswordReset(otp, email, logoUrl, baseUrl);
 
     const plainTextContent = generateOTPEmailPlainText(otp, purpose);
 

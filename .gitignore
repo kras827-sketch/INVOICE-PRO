@@ -7,3 +7,5 @@ node_modules
 *.pem
 uploads/
 functions/.env
+.vercel
+.env*.local

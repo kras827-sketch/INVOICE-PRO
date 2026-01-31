@@ -162,7 +162,15 @@ const Login = () => {
 
     try {
       console.log('🔵 Starting Google login...');
-      const result = await loginWithGoogle();
+      
+      // Safety timeout in case backend hangs
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Login request timed out. Please try again.')), 15000)
+      );
+
+      const loginPromise = loginWithGoogle();
+      
+      const result = await Promise.race([loginPromise, timeoutPromise]);
       console.log('🔵 Google login result:', result);
       
       if (result.success) {
