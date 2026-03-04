@@ -82,9 +82,7 @@ exports.signup = async (req, res) => {
     res.status(201).json({
       success: true,
       message: 'Account created. OTP sent to your email.',
-      userId: user._id,
-      // In development, include OTP for testing
-      ...(process.env.NODE_ENV === 'development' && { otp: otp })
+      userId: user._id
     });
 
   } catch (err) {

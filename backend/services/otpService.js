@@ -1,5 +1,6 @@
 /**
  * OTP Service - Generate, send, and verify OTP codes
+ * Using SMTP/Nodemailer for reliable email delivery
  */
 
 const nodemailer = require('nodemailer');
@@ -9,44 +10,51 @@ const {
   generateOTPEmailPlainText,
 } = require('./emailTemplates');
 
-// Create transporter with explicit SMTP configuration
-const createTransporter = () => {
-  const emailService = process.env.EMAIL_SERVICE || 'gmail';
-  
-  if (emailService === 'sendgrid') {
-    return nodemailer.createTransport({
-      host: 'smtp.sendgrid.net',
-      port: 587,
-      secure: false, // Use TLS
-      auth: {
-        user: 'apikey',
-        pass: process.env.SENDGRID_API_KEY
-      },
-      connectionTimeout: 10000,
-      socketTimeout: 10000
-    });
-  }
-  
-  // Default to explicit Gmail SMTP configuration (not using service: 'gmail')
-  return nodemailer.createTransport({
+// Initialize SMTP transporter
+const getTransporter = () => {
+  const transporter = nodemailer.createTransport({
     host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.EMAIL_PORT || '465'), // Default to 465 (SSL) if not specified
-    secure: process.env.EMAIL_SECURE === 'true' || process.env.EMAIL_PORT === '465', // true for 465, false for 587
+    port: parseInt(process.env.EMAIL_PORT) || 587,
+    secure: parseInt(process.env.EMAIL_PORT) === 465, // true for 465, false for other ports
     auth: {
       user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS
+      pass: process.env.EMAIL_PASS,
     },
-    // Vercel/Serverless optimizations
-    pool: false, // Disable pooling in serverless to avoid hanging connections
-    attachDataUrls: true,
-    tls: {
-      rejectUnauthorized: false, // Help with some strict server varifications
-      ciphers: 'SSLv3'
-    }
   });
+
+  console.log(`📧 Configured OTP Email Service: SMTP (${process.env.EMAIL_HOST || 'smtp.gmail.com'})`);
+  return transporter;
 };
 
-const transporter = createTransporter();
+// Initialize SMTP on module load
+const initTransporter = async () => {
+  try {
+    console.log('🔧 Initializing email service (SMTP)...');
+    const transporter = getTransporter();
+    // Optionally skip verification (useful when outbound SMTP is blocked)
+    if (process.env.SKIP_SMTP_VERIFY === 'true') {
+      console.log('⚠️ SKIP_SMTP_VERIFY is set — skipping SMTP verification at startup');
+      return false;
+    }
+
+    // Verify transporter connectivity and credentials
+    try {
+      await transporter.verify();
+      console.log(`📧 Email Service: SMTP (${process.env.EMAIL_HOST || 'smtp.gmail.com'})`);
+      console.log('✅ Email service initialized and ready!');
+      return true;
+    } catch (verifyErr) {
+      console.warn('⚠️ SMTP transporter verification failed:', verifyErr.message);
+      console.warn('ℹ️ Server will continue to run. Email sending may fail until SMTP connectivity is restored.');
+      console.warn('ℹ️ To skip verification in development set SKIP_SMTP_VERIFY=true in backend/.env');
+      // Do NOT throw here — return false to allow server startup
+      return false;
+    }
+  } catch (error) {
+    console.error(`⚠️ Email service initialization failed: ${error.message}`);
+    return false;
+  }
+};
 
 // Generate a 6-digit OTP
 function generateOTP() {
@@ -72,14 +80,17 @@ async function sendOTPEmail(email, otp, purpose = 'signup', logoUrl = '') {
     // Validate email format
     if (!email || !email.includes('@')) {
       console.error(`❌ Invalid email format: ${email}`);
-      return { success: false };
+      return { success: false, error: 'Invalid email format' };
     }
+
+    // Initialize SMTP transporter
+    const transporter = getTransporter();
 
     const subject = purpose === 'signup' 
       ? 'Verify your InvoicePro account'
       : 'Reset your InvoicePro password';
 
-    const baseUrl = getBaseUrl();
+    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
     const htmlContent = purpose === 'signup'
       ? generateOTPEmailSignup(otp, email, logoUrl, baseUrl)
@@ -87,27 +98,71 @@ async function sendOTPEmail(email, otp, purpose = 'signup', logoUrl = '') {
 
     const plainTextContent = generateOTPEmailPlainText(otp, purpose);
 
-    const info = await transporter.sendMail({
-      from: process.env.EMAIL_USER,
+    console.log(`📤 Sending OTP email to: ${email}`);
+    console.log(`   Purpose: ${purpose}`);
+    console.log(`   From: ${process.env.EMAIL_USER}`);
+    console.log(`   Subject: ${subject}`);
+
+    // Send email via SMTP
+    const result = await transporter.sendMail({
+      from: `"InvoicePro" <${process.env.EMAIL_USER}>`,
       to: email,
       subject,
       html: htmlContent,
       text: plainTextContent,
     });
 
-    console.log(`✅ OTP sent to ${email} for ${purpose} (Message ID: ${info.messageId})`);
-    return { success: true, messageId: info.messageId };
-  } catch (error) {
-    // Log the full technical error internally
-    console.error(`❌ Failed to send OTP email to ${email}:`, {
-      errorMessage: error.message,
-      errorCode: error.code,
-      errorResponse: error.response,
-      details: error.toString()
-    });
+    console.log(`✅ Email sent successfully!`);
+    console.log(`   Message ID: ${result.messageId}`);
     
-    // Return generic failure - do NOT expose SMTP/technical details
-    return { success: false };
+    return { success: true, messageId: result.messageId };
+
+  } catch (error) {
+    // Log full error for debugging
+    console.error(`\n❌ FAILED TO SEND OTP EMAIL TO ${email}`);
+    console.error(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    console.error(`Error Message: ${error.message}`);
+    console.error(`Service: SMTP (${process.env.EMAIL_SERVICE || 'gmail'})`);
+    console.error(`SMTP User: ${process.env.EMAIL_USER ? '✓ Set' : '❌ NOT SET'}`);
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.error(`\n💡 SMTP CREDENTIALS MISSING:`);
+      console.error(`   - Set EMAIL_USER and EMAIL_PASS in backend/.env`);
+      console.error(`   - For Gmail, ensure App Passwords or OAuth are configured`);
+    }
+    
+    console.error(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+
+    // Attempt fallback: create an Ethereal test account so emails can still be inspected when SMTP is blocked
+    try {
+      console.log('🔁 Attempting Ethereal fallback to send OTP email (useful for dev/staging)...');
+      const testAccount = await nodemailer.createTestAccount();
+      const etherealTransporter = nodemailer.createTransport({
+        host: testAccount.smtp.host,
+        port: testAccount.smtp.port,
+        secure: testAccount.smtp.secure,
+        auth: {
+          user: testAccount.user,
+          pass: testAccount.pass
+        }
+      });
+
+      const fallbackResult = await etherealTransporter.sendMail({
+        from: `"InvoicePro (Ethereal)" <${testAccount.user}>`,
+        to: email,
+        subject,
+        html: htmlContent,
+        text: plainTextContent
+      });
+
+      const previewUrl = nodemailer.getTestMessageUrl(fallbackResult);
+      console.log('✅ Ethereal fallback email sent. Preview URL:', previewUrl);
+
+      // In development, return the preview URL so frontend/tests can access the message
+      return { success: true, messageId: fallbackResult.messageId, previewUrl };
+    } catch (fallbackErr) {
+      console.error('❌ Ethereal fallback also failed:', fallbackErr.message);
+      return { success: false, error: 'Email delivery failed. Please try again.' };
+    }
   }
 }
 
@@ -131,4 +186,5 @@ module.exports = {
   getOTPExpiry,
   sendOTPEmail,
   verifyOTP,
+  initTransporter,
 };

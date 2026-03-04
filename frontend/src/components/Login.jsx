@@ -73,83 +73,32 @@ const Login = () => {
     try {
       console.log('🔐 Logging in with email...');
       
-      // Call backend login endpoint
-      const response = await api.post('/auth/login', {
-        email: formData.email,
-        password: formData.password
-      });
+      const result = await login(formData.email, formData.password);
 
-      if (response.data.success) {
+      if (result.success) {
         console.log('✅ Login successful');
         setSuccess('✅ Login successful! Redirecting to dashboard...');
-
-        // Save token and user to localStorage
-        localStorage.setItem('token', response.data.token);
-        localStorage.setItem('user', JSON.stringify(response.data.user));
-
+        
         // Redirect to dashboard
         setTimeout(() => {
           navigate('/dashboard', { replace: true });
         }, 1000);
       } else {
-        // Handle specific errors
-        if (response.data.requiresOTP) {
-          setError('❌ Please verify your account first. Check your email for the OTP.');
+        if (result.message && result.message.includes('verify')) {
+           setError('❌ ' + result.message);
+           setTimeout(() => {
+            navigate('/verify-otp', { 
+              state: { email: formData.email },
+              replace: true 
+            });
+           }, 2000);
         } else {
-          setError('❌ ' + (response.data.message || 'Login failed'));
+           setError('❌ ' + (result.message || 'Login failed'));
         }
       }
     } catch (err) {
       console.error('❌ Login error:', err);
-      
-      // Handle 403 - Account not verified
-      if (err.response?.status === 403) {
-        console.log('⚠️ Account not verified, redirecting to OTP verification');
-        setError('❌ Account not verified. Redirecting to OTP verification...');
-        setTimeout(() => {
-          navigate('/verify-otp', { 
-            state: { email: formData.email },
-            replace: true 
-          });
-        }, 1500);
-        return;
-      }
-      
-      // Handle specific backend error messages
-      if (err.response?.data?.message === 'Please verify your account first') {
-        setError('❌ Account not verified. Check your email for the OTP code.');
-        setTimeout(() => {
-          navigate('/verify-otp', { 
-            state: { email: formData.email },
-            replace: true 
-          });
-        }, 1500);
-      } 
-      else if (err.response?.data?.message === 'Invalid credentials' || err.response?.status === 400) {
-        setError('❌ Email or password is incorrect');
-      } 
-      else if (err.response?.data?.message) {
-        setError('❌ ' + err.response.data.message);
-      }
-      // Handle network errors
-      else if (!err.response) {
-        console.error('Network error or server unreachable:', err.message);
-        setError('❌ Unable to connect to our servers. Please check your internet connection and try again.');
-      }
-      // Handle 404 errors
-      else if (err.response?.status === 404) {
-        console.error('404 Error - API endpoint not found');
-        setError('❌ Login service unavailable. Please try again shortly.');
-      }
-      // Handle server errors
-      else if (err.response?.status >= 500) {
-        console.error('Server error:', err.response?.status);
-        setError('❌ Our servers are experiencing issues. Please try again shortly.');
-      }
-      // Generic fallback
-      else {
-        setError('❌ Login failed. Please try again.');
-      }
+      setError('❌ An unexpected error occurred. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -165,7 +114,7 @@ const Login = () => {
       
       // Safety timeout in case backend hangs
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Login request timed out. Please try again.')), 15000)
+        setTimeout(() => reject(new Error('Login request timed out. Please try again.')), 20000)
       );
 
       const loginPromise = loginWithGoogle();
@@ -173,7 +122,7 @@ const Login = () => {
       const result = await Promise.race([loginPromise, timeoutPromise]);
       console.log('🔵 Google login result:', result);
       
-      if (result.success) {
+      if (result && result.success) {
         // Check if this is first-time login
         if (result.isFirstLogin) {
           console.log('👤 First-time user, showing setup modal');
@@ -188,15 +137,21 @@ const Login = () => {
           setTimeout(() => {
             console.log('📍 Navigating to dashboard');
             navigate('/dashboard', { replace: true });
-          }, 2500);
+          }, 1500);
         }
       } else {
-        console.error('❌ Google login failed:', result.message);
-        setError('❌ ' + result.message);
+        console.error('❌ Google login failed:', result?.message);
+        setError('❌ ' + (result?.message || 'Google login failed'));
       }
     } catch (err) {
       console.error('❌ Google login error:', err);
-      setError('❌ Google login failed.');
+      if (err.message.includes('popup-closed')) {
+        setError('❌ Login popup was closed. Please try again.');
+      } else if (err.message.includes('timeout')) {
+        setError('❌ ' + err.message);
+      } else {
+        setError('❌ Google login failed. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -253,13 +208,16 @@ const Login = () => {
   };
 
   const ForgotPasswordModal = () => (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
       <div className={`${isDarkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl p-8 max-w-md w-full shadow-2xl`}>
-        <div className="flex justify-between items-center mb-6">
+        <div className="text-center mb-6">
+          <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${isDarkMode ? 'bg-emerald-900/30' : 'bg-emerald-100'}`}>
+            <Mail className="h-8 w-8 text-emerald-600" />
+          </div>
           <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Reset Password</h2>
-          <button onClick={() => { setShowForgotPassword(false); setError(''); setSuccess(''); }} className={isDarkMode ? 'text-gray-400 hover:text-gray-300' : 'text-gray-600 hover:text-gray-900'}>
-            <X className="h-6 w-6" />
-          </button>
+          <p className={`mt-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            Enter your email and we'll send you a reset link
+          </p>
         </div>
 
         {error && (
@@ -285,7 +243,7 @@ const Login = () => {
                 value={forgotEmail}
                 onChange={(e) => setForgotEmail(e.target.value)}
                 required
-                className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300 text-gray-900'}`}
+                className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300 text-gray-900'}`}
                 placeholder="you@example.com"
               />
             </div>
@@ -294,24 +252,26 @@ const Login = () => {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition disabled:opacity-50"
+            className="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 text-white py-3 rounded-lg font-semibold hover:from-emerald-700 hover:to-emerald-800 transition disabled:opacity-50"
           >
             {isLoading ? 'Sending...' : 'Send Reset Link'}
           </button>
         </form>
 
-        <p className={`mt-4 text-center text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-          Remember your password?{' '}
-          <button onClick={() => setShowForgotPassword(false)} className="text-blue-600 font-semibold hover:text-blue-700">
-            Back to Login
+        <div className="flex justify-between items-center mt-6">
+          <button onClick={() => { setShowForgotPassword(false); setError(''); setSuccess(''); }} className={`text-sm font-semibold transition ${isDarkMode ? 'text-gray-400 hover:text-gray-300' : 'text-gray-600 hover:text-gray-900'}`}>
+            ← Back to Login
           </button>
-        </p>
+          <p className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+            Check your email after sending
+          </p>
+        </div>
       </div>
     </div>
   );
 
   return (
-    <div className={`min-h-screen flex items-center justify-center p-4 ${isDarkMode ? 'bg-gradient-to-br from-gray-900 via-gray-950 to-gray-900' : 'bg-gradient-to-br from-blue-50 to-purple-50'}`}>
+    <div className={`min-h-screen flex items-center justify-center p-4 ${isDarkMode ? 'bg-gray-950' : 'bg-brand-white'}`}>
       <GoogleSetupModal 
         isOpen={showGoogleSetup} 
         firebaseUser={googleUser}
@@ -320,7 +280,7 @@ const Login = () => {
       
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
-          <FileText className="h-10 w-10 text-blue-600 mx-auto mb-2" />
+          <FileText className="h-10 w-10 text-emerald-600 mx-auto mb-2" />
           <h1 className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>InvoicePro</h1>
           <p className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>Sign in to your account</p>
         </div>
@@ -363,7 +323,7 @@ const Login = () => {
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     required
-                    className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300 text-gray-900'}`}
+                    className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300 text-gray-900'}`}
                     placeholder="you@example.com"
                   />
                 </div>
@@ -378,7 +338,7 @@ const Login = () => {
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     required
-                    className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300 text-gray-900'}`}
+                    className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300 text-gray-900'}`}
                     placeholder="••••••••"
                   />
                 </div>
@@ -388,14 +348,14 @@ const Login = () => {
                 <button
                   onClick={handleEmailLogin}
                   disabled={isLoading}
-                  className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition disabled:opacity-50"
+                  className="w-full bg-brand-emerald text-white py-3 rounded-lg font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
                 >
                   {isLoading ? 'Signing in...' : 'Sign In'}
                 </button>
                 <button
                   type="button"
                   onClick={() => navigate('/forgot-password')}
-                  className={`w-full py-2 text-sm font-semibold transition ${isDarkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'}`}
+                  className={`w-full py-2 text-sm font-semibold transition ${isDarkMode ? 'text-emerald-400 hover:text-emerald-300' : 'text-emerald-600 hover:text-emerald-700'}`}
                 >
                   Forgot Password?
                 </button>
@@ -413,7 +373,7 @@ const Login = () => {
 
           <p className={`mt-6 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
             Don't have an account?{' '}
-            <Link to="/signup" className="text-blue-600 font-semibold hover:text-blue-700">
+            <Link to="/signup" className="text-emerald-600 font-semibold hover:text-emerald-700">
               Sign up
             </Link>
           </p>

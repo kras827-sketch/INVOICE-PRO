@@ -265,15 +265,26 @@ export const AuthProvider = ({ children }) => {
     try {
       console.log('🔵 Attempting Google login...');
       
+      // Open Google sign-in popup
       const result = await signInWithPopup(auth, googleProvider);
-      console.log('✅ Google login successful');
+      console.log('✅ Google popup successful, user:', result.user.email);
+      
+      if (!result.user) {
+        throw new Error('No user returned from Google');
+      }
       
       // Check if this is first-time login
-      const isFirstLogin = result.additionalUserInfo?.isNewUser;
-      console.log('First time user:', isFirstLogin);
+      const isFirstLogin = result.additionalUserInfo?.isNewUser || false;
+      console.log('👤 First time user:', isFirstLogin, 'additionalUserInfo:', result.additionalUserInfo);
       
       // Sync with backend after successful Google login
-      await syncWithBackend(result.user, isFirstLogin);
+      console.log('🔄 Syncing with backend...');
+      const syncSuccess = await syncWithBackend(result.user, isFirstLogin);
+      
+      if (!syncSuccess) {
+        throw new Error('Failed to sync with backend');
+      }
+      
       console.log('✅ Backend sync complete');
       
       return { 
@@ -283,10 +294,23 @@ export const AuthProvider = ({ children }) => {
       };
     } catch (error) {
       console.error('❌ Google login error:', error.code, error.message);
+      
+      let message = 'Google login failed';
       if (error.code === 'auth/popup-closed-by-user') {
-        return { success: false, message: 'Login popup closed' };
+        message = 'Login popup was closed';
+      } else if (error.code === 'auth/cancelled-popup-request') {
+        message = 'Login was cancelled';
+      } else if (error.code === 'auth/popup-blocked') {
+        message = 'Login popup was blocked by your browser';
+      } else if (error.message?.includes('sync')) {
+        message = 'Backend sync failed - please try again';
       }
-      return { success: false, message: getErrorMessage(error.code) };
+      
+      return { 
+        success: false, 
+        message,
+        isFirstLogin: false
+      };
     }
   };
 
@@ -363,7 +387,7 @@ export const AuthProvider = ({ children }) => {
       await sendPasswordResetEmail(auth, email);
       return {
         success: true,
-        message: 'Password reset email sent. Check your inbox.',
+        message: 'Reset link sent! Check your email and follow the instructions to reset your password.',
       };
     } catch (error) {
       return { success: false, message: getErrorMessage(error.code) };
@@ -376,6 +400,20 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('token');
     setUser(null);
     setFirebaseUser(null);
+  };
+
+  // 🔄 Refresh user from localStorage (call after updating localStorage)
+  const refreshUser = () => {
+    try {
+      const stored = localStorage.getItem('user');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        setUser(parsed);
+        console.log('🔄 User context refreshed from localStorage');
+      }
+    } catch (err) {
+      console.error('Failed to refresh user:', err);
+    }
   };
 
   // 🧠 Error helper
@@ -404,6 +442,7 @@ export const AuthProvider = ({ children }) => {
         resendEmailVerification,
         sendPasswordReset,
         clearExistingSessions,
+        refreshUser,
       }}
     >
       {!loading && children}

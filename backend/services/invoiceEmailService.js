@@ -1,59 +1,35 @@
+// utils/emailService.js
 const nodemailer = require('nodemailer');
 
 /**
  * 🧩 INVOICE EMAIL SERVICE
  * Completely decoupled from authentication email logic
  * Dedicated to sending invoices with PDF attachments to clients
+ * Uses SMTP/Nodemailer for reliable delivery
  */
 
-// Initialize transporter based on environment configuration
+// Initialize SMTP transporter
 const getTransporter = () => {
-  if (process.env.EMAIL_SERVICE === 'gmail') {
-    return nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 587,
-      secure: false, // TLS, not SSL
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS // Gmail App Password (16 chars)
-      },
-      pool: {
-        maxConnections: 5,
-        maxMessages: 100,
-        rateDelta: 2000,
-        rateLimit: 5
-      },
-      logger: true,
-      debug: true
-    });
-  } else if (process.env.EMAIL_SERVICE === 'sendgrid') {
-    return nodemailer.createTransport({
-      host: 'smtp.sendgrid.net',
-      port: 587,
-      secure: false,
-      auth: {
-        user: 'apikey',
-        pass: process.env.SENDGRID_API_KEY
-      }
-    });
-  } else {
-    // Default fallback to Gmail with robust handling
-    return nodemailer.createTransport({
-      host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-      port: parseInt(process.env.EMAIL_PORT || '465'),
-      secure: process.env.EMAIL_SECURE === 'true' || process.env.EMAIL_PORT === '465', 
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-      },
-      // Disable pooling for serverless/Vercel to prevent timeouts
-      pool: false, 
-      tls: {
-        rejectUnauthorized: false,
-        ciphers: 'SSLv3'
-      }
-    });
-  }
+  const port = parseInt(process.env.EMAIL_PORT) || 587;
+  const secure = port === 465; // true for 465 (SSL), false for 587 (STARTTLS)
+
+  const transporter = nodemailer.createTransport({
+    host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+    port,
+    secure,
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+    // For port 587, use STARTTLS
+    ...(!secure && { tls: { rejectUnauthorized: false } }),
+  });
+
+  console.log(`📧 Configured Invoice Email Service: SMTP (${process.env.EMAIL_HOST || 'smtp.gmail.com'}:${port}, secure: ${secure})`);
+  return transporter;
 };
 
 /**
@@ -67,58 +43,88 @@ const getTransporter = () => {
  * @param {Buffer} options.pdfBuffer - PDF file buffer (optional)
  * @param {string} options.invoiceNumber - Invoice number for filename
  * 
- * @returns {Object} - { success: true, messageId, response }
+ * @returns {Object} - { success: true, id }
  * @throws {Error} - Specific error message if sending fails
  */
 exports.sendInvoiceEmail = async (options) => {
+  // Destructure OUTSIDE try so variables are available in the catch fallback
+  const { email, subject, htmlContent, pdfBuffer, invoiceNumber } = options || {};
+
   try {
-    const { email, subject, htmlContent, pdfBuffer, invoiceNumber } = options;
+    console.log('📧 [EmailService] sendInvoiceEmail called with:');
+    console.log('   email:', email);
+    console.log('   subject:', subject);
+    console.log('   htmlContent length:', htmlContent ? htmlContent.length : 0);
+    console.log('   pdfBuffer:', !!pdfBuffer);
 
     // Validate required fields
     if (!email || !htmlContent) {
       throw new Error('Email and HTML content are required');
     }
 
-    console.log('📧 Invoice Email Service - Sending');
-    console.log('  Recipient:', email);
-    console.log('  Subject:', subject);
-    console.log('  PDF attached:', !!pdfBuffer ? `Yes (${pdfBuffer.length} bytes)` : 'No');
-
-    // Initialize transporter
+    // Initialize SMTP transporter
     const transporter = getTransporter();
-    console.log('✅ Email transporter initialized');
+    console.log('✅ Email service initialized');
 
     // Build mail options with optional PDF attachment
     const mailOptions = {
-      from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+      from: `"InvoicePro" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: subject || `Invoice ${invoiceNumber}`,
       html: htmlContent,
-      attachments: pdfBuffer ? [
-        {
-          filename: `${invoiceNumber || 'invoice'}.pdf`,
-          content: pdfBuffer,
-          contentType: 'application/pdf'
-        }
-      ] : []
     };
 
+    // Attach PDF if provided
+    if (pdfBuffer) {
+      mailOptions.attachments = [{
+        filename: `${invoiceNumber || 'invoice'}.pdf`,
+        content: pdfBuffer
+      }];
+    }
+
     // Send email
-    console.log('📤 Sending invoice email from:', mailOptions.from);
-    const info = await transporter.sendMail(mailOptions);
+    console.log(`📤 Sending invoice email from: ${process.env.EMAIL_USER}`);
+    const result = await transporter.sendMail(mailOptions);
+
     console.log('✅ Invoice email sent successfully');
-    console.log('   Message ID:', info.messageId);
+    console.log('   Message ID:', result.messageId);
 
     return {
       success: true,
-      messageId: info.messageId,
-      response: info.response
+      id: result.messageId
     };
 
   } catch (error) {
     console.error('❌ Invoice email sending error:', error.message);
-    console.error('   Stack:', error.stack);
-    throw new Error(`Failed to send invoice email: ${error.message}`);
+    console.error('   Code:', error.code || 'N/A');
+
+    // Attempt Ethereal fallback when SMTP fails (helps in dev/staging environments)
+    try {
+      console.log('🔁 Attempting Ethereal fallback to send invoice email...');
+      const testAccount = await nodemailer.createTestAccount();
+      const etherealTransporter = nodemailer.createTransport({
+        host: testAccount.smtp.host,
+        port: testAccount.smtp.port,
+        secure: testAccount.smtp.secure,
+        auth: { user: testAccount.user, pass: testAccount.pass }
+      });
+
+      const fallbackInfo = await etherealTransporter.sendMail({
+        from: process.env.EMAIL_FROM || process.env.EMAIL_USER || testAccount.user,
+        to: email,
+        subject: subject || `Invoice ${invoiceNumber}`,
+        html: htmlContent,
+        attachments: pdfBuffer ? [{ filename: `${invoiceNumber || 'invoice'}.pdf`, content: pdfBuffer }] : undefined
+      });
+
+      const previewUrl = nodemailer.getTestMessageUrl(fallbackInfo);
+      console.log('✅ Ethereal invoice email sent. Preview URL:', previewUrl);
+
+      return { success: true, id: fallbackInfo.messageId, previewUrl };
+    } catch (fallbackErr) {
+      console.error('❌ Ethereal fallback failed:', fallbackErr.message);
+      throw new Error(`Failed to send invoice email: ${error.message}`);
+    }
   }
 };
 
@@ -146,7 +152,7 @@ exports.sendTestInvoiceEmail = async (email) => {
       <html>
       <body style="font-family: Arial, sans-serif; background: #f5f5f5; padding: 20px;">
         <div style="max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px;">
-          <h1 style="color: #2563eb;">✅ Invoice Email Configuration Test</h1>
+          <h1 style="color: #059669;">✅ Invoice Email Configuration Test</h1>
           <p style="color: #333; line-height: 1.6;">
             This test email confirms that your invoice email delivery system is configured correctly.
           </p>

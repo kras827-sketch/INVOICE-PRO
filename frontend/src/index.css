@@ -1,3 +1,72 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ============================================
+   Modern 2026 Spinner — Dual-ring conic gradient
+   ============================================ */
+@keyframes spinner-rotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+@keyframes spinner-glow {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+.modern-spinner {
+  --spinner-size: 40px;
+  --spinner-border: 3.5px;
+  --spinner-color: #10b981; /* brand-emerald */
+  width: var(--spinner-size);
+  height: var(--spinner-size);
+  border-radius: 50%;
+  position: relative;
+  display: inline-block;
+}
+.modern-spinner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: var(--spinner-border) solid transparent;
+  border-top-color: var(--spinner-color);
+  border-right-color: color-mix(in srgb, var(--spinner-color), transparent 60%);
+  animation: spinner-rotate 0.8s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+}
+.modern-spinner::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  border: calc(var(--spinner-border) - 1px) solid transparent;
+  border-bottom-color: color-mix(in srgb, var(--spinner-color), transparent 40%);
+  animation: spinner-rotate 1.2s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite reverse;
+}
+
+/* Sizes */
+.modern-spinner.spinner-sm {
+  --spinner-size: 20px;
+  --spinner-border: 2.5px;
+}
+.modern-spinner.spinner-sm::after {
+  inset: 2px;
+}
+.modern-spinner.spinner-lg {
+  --spinner-size: 48px;
+  --spinner-border: 4px;
+}
+.modern-spinner.spinner-lg::after {
+  inset: 4px;
+}
+
+/* White variant (for buttons with dark bg) */
+.modern-spinner.spinner-white {
+  --spinner-color: #ffffff;
+}
+
+/* With glow effect for full-page loaders */
+.modern-spinner.spinner-glow {
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--spinner-color), transparent 50%));
+  animation: spinner-glow 1.5s ease-in-out infinite;
+}

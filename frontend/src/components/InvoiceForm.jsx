@@ -8,6 +8,7 @@ import { downloadInvoicePDF, generatePDFBlob } from '../services/pdfGenerator';
 import { generateInvoiceEmailHTML } from '../services/emailTemplates';
 import { INVOICE_TEMPLATES } from '../data/invoiceTemplates';
 import { calculateInvoice } from '../utils/invoiceCalculations';
+import { CURRENCIES, formatCurrency, getCurrency } from '../utils/currencyUtils';
 import api from '../services/api'; // Use centralized API service
 import toast from 'react-hot-toast';
 
@@ -36,22 +37,24 @@ export default function InvoiceForm() {
     }
   }, [user]);
 
+  // Edit Mode: Detect edit mode early so other effects can use it
+  const { id } = useParams();
+  const isEditMode = !!id;
+
   // Update invoice data when user loads (e.g., from Firebase)
+  // Skip in edit mode — fetchInvoice will set the correct company data
   useEffect(() => {
-    if (user) {
+    if (user && !isEditMode) {
       setInvoiceData(prev => ({
         ...prev,
         businessName: user?.businessProfile?.businessName || user?.displayName || user?.name || prev.businessName,
         businessEmail: user?.businessProfile?.businessEmail || user?.email || prev.businessEmail,
         businessPhone: user?.businessProfile?.businessPhone || prev.businessPhone,
         businessAddress: user?.businessProfile?.businessAddress || prev.businessAddress,
+        bankDetails: user?.businessProfile?.bankDetails || prev.bankDetails,
       }));
     }
-  }, [user]);
-
-  // Edit Mode: Fetch existing invoice
-  const { id } = useParams();
-  const isEditMode = !!id;
+  }, [user, isEditMode]);
 
   useEffect(() => {
     const fetchInvoice = async () => {
@@ -72,13 +75,15 @@ export default function InvoiceForm() {
           businessPhone: inv.company?.phone || inv.senderPhone || prev.businessPhone,
           businessAddress: inv.company?.address || inv.senderAddress || prev.businessAddress,
           businessLogo: inv.company?.logo || prev.businessLogo,
+          bankDetails: inv.bankDetails || prev.bankDetails,
           toName: inv.client?.name || inv.clientName || '',
           toEmail: inv.client?.email || inv.clientEmail || '',
           toPhone: inv.client?.phone || inv.clientPhone || '',
           toAddress: inv.client?.address || inv.clientAddress || '',
           items: inv.items?.map(item => ({
             id: item._id || Math.random(),
-            description: item.name || item.description,
+            name: item.name || '',
+            description: item.description || '',
             quantity: item.quantity,
             rate: item.price !== undefined ? item.price : item.rate
           })) || [],
@@ -86,8 +91,11 @@ export default function InvoiceForm() {
           discount: inv.discount || 0,
           notes: inv.notes || '',
           terms: inv.terms || '',
-          status: inv.status
+          status: inv.status,
+          currency: inv.currency || 'NGN'
         }));
+        // Restore template and logo from saved invoice
+        if (inv.template) setSelectedTemplate(inv.template);
       } catch (err) {
         console.error('Error fetching invoice for edit:', err);
         toast.error('Failed to load invoice');
@@ -110,6 +118,7 @@ export default function InvoiceForm() {
     businessPhone: '',
     businessAddress: '',
     businessLogo: null,
+    bankDetails: null, // { bankName, accountName, accountNumber }
     
     // From section (kept for backward compatibility)
     fromName: user?.displayName || user?.name || '',
@@ -125,7 +134,7 @@ export default function InvoiceForm() {
     
     // Items
     items: [
-      { id: 1, description: '', quantity: 1, rate: 0 }
+      { id: 1, name: '', description: '', quantity: 1, rate: 0 }
     ],
     
     // Financials
@@ -173,7 +182,8 @@ export default function InvoiceForm() {
 
     // Map items to backend format
     const formattedItems = data.items.map(item => ({
-      name: item.description || item.name || 'Item',
+      name: item.name || 'Item',
+      description: item.description || '',
       quantity: parseInt(item.quantity) || 1,
       price: parseFloat(item.rate || item.price || 0)
     }));
@@ -183,7 +193,9 @@ export default function InvoiceForm() {
       subtotal: calculations.subtotal,
       tax: calculations.taxAmount,
       total: calculations.total,
-      items: formattedItems
+      items: formattedItems,
+      currency: data.currency || invoiceData.currency || 'NGN',
+      template: data.template || selectedTemplate || 'modern-clean'
     };
   };
   // Handle logo upload
@@ -274,7 +286,9 @@ export default function InvoiceForm() {
         discount: normalized.discount,
         notes: normalized.notes,
         terms: normalized.terms,
-        template: normalized.template || 'modern-clean'
+        template: normalized.template || 'modern-clean',
+        currency: normalized.currency || invoiceData.currency || 'NGN',
+        bankDetails: normalized.bankDetails || invoiceData.bankDetails || null
       };
 
       console.log('💾 [DB] Payload prepared, making API request...');
@@ -339,8 +353,8 @@ export default function InvoiceForm() {
       const itemErrors = [];
       invoiceData.items.forEach((item, i) => {
         const itemErr = {};
-        if (!item.description?.trim()) {
-          itemErr.description = 'Description required';
+        if (!item.name?.trim()) {
+          itemErr.name = 'Item name required';
         }
         if (!item.quantity || item.quantity <= 0) {
           itemErr.quantity = 'Qty > 0';
@@ -391,7 +405,8 @@ export default function InvoiceForm() {
       const normalized = normalizeInvoiceData({ 
         ...invoiceData, 
         businessLogo: logo,
-        status: 'completed'
+        status: 'completed',
+        template: selectedTemplate // Ensure template is saved
       });
 
       // ========== STEP 3: PREPARE FOR ASYNC ==========
@@ -405,7 +420,16 @@ export default function InvoiceForm() {
         const res = await api.put(`/invoices/${id}`, normalized);
         savedInvoice = res.data.invoice;
         console.log('✅ [STEP 4] Invoice updated:', savedInvoice._id);
-        toast.success('Invoice updated successfully!');
+        toast.success('Invoice updated successfully.');
+        
+        // Navigate to decision page for updated invoice
+        navigate('/invoice/decision', {
+          state: {
+            invoiceData: normalized,
+            savedInvoice: savedInvoice
+          }
+        });
+        return; // Exit early after redirect
       } else {
         // CREATE new invoice
         console.log('💾 [STEP 4] Saving invoice to database...');
@@ -479,7 +503,11 @@ export default function InvoiceForm() {
       setLoading(true);
       console.log('📧 [EMAIL] Validation passed, starting email delivery...');
       
-      const normalized = normalizeInvoiceData({ ...invoiceData, businessLogo: logo });
+      const normalized = normalizeInvoiceData({ 
+        ...invoiceData, 
+        businessLogo: logo,
+        template: selectedTemplate
+      });
 
       // Generate PDF quickly in parallel
       console.log('📧 [EMAIL] Generating PDF...');
@@ -538,7 +566,7 @@ export default function InvoiceForm() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
-            <FileText className={`w-8 h-8 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+            <FileText className={`w-8 h-8 ${isDarkMode ? 'text-emerald-400' : 'text-emerald-600'}`} />
             <h1 className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
               Create Invoice
             </h1>
@@ -548,7 +576,7 @@ export default function InvoiceForm() {
               onClick={() => setActiveTab('form')}
               className={`px-4 py-2 rounded-lg font-medium transition ${
                 activeTab === 'form'
-                  ? `${isDarkMode ? 'bg-blue-600' : 'bg-blue-500'} text-white`
+                  ? `${isDarkMode ? 'bg-brand-navy' : 'bg-brand-emerald'} text-white`
                   : isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-700'
               }`}
             >
@@ -558,7 +586,7 @@ export default function InvoiceForm() {
               onClick={() => setActiveTab('preview')}
               className={`px-4 py-2 rounded-lg font-medium transition ${
                 activeTab === 'preview'
-                  ? `${isDarkMode ? 'bg-blue-600' : 'bg-blue-500'} text-white`
+                  ? `${isDarkMode ? 'bg-brand-navy' : 'bg-brand-emerald'} text-white`
                   : isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-700'
               }`}
             >
@@ -590,7 +618,7 @@ export default function InvoiceForm() {
                           onClick={() => setSelectedTemplate(key)}
                           className={`p-3 rounded-lg border-2 transition text-left ${
                             selectedTemplate === key
-                              ? `border-blue-500 ${isDarkMode ? 'bg-blue-900/20' : 'bg-blue-50'}`
+                              ? `border-brand-navy ${isDarkMode ? 'bg-brand-navy/20' : 'bg-blue-50'}`
                               : `border-gray-300 ${isDarkMode ? 'border-gray-600 hover:bg-gray-700' : 'hover:bg-gray-50'}`
                           }`}
                         >
@@ -650,6 +678,27 @@ export default function InvoiceForm() {
                       />
                       <label htmlFor="useDefaultLogo" className={`${isDarkMode ? 'text-gray-300' : 'text-gray-700'} text-sm`}>Use default business logo</label>
                     </div>
+                  </div>
+                  <div className="col-span-2">
+                    <label className={`block text-sm font-medium mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Currency
+                    </label>
+                    <select
+                      name="currency"
+                      value={invoiceData.currency || 'NGN'}
+                      onChange={handleChange}
+                      className={`w-full px-3 py-2 rounded border ${
+                        isDarkMode 
+                          ? 'bg-gray-700 border-gray-600 text-white' 
+                          : 'bg-white border-gray-300 text-gray-900'
+                      }`}
+                    >
+                      {CURRENCIES.map(c => (
+                        <option key={c.code} value={c.code}>
+                          {c.symbol} {c.code} — {c.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               </div>
@@ -858,25 +907,52 @@ export default function InvoiceForm() {
                 </div>
 
                 {errors.items && <p className="text-red-500 text-sm mb-2">{errors.items}</p>}
+                {/* Column Headers */}
+                <div className="grid grid-cols-12 gap-2 mb-2">
+                  <span className={`col-span-3 text-xs font-semibold uppercase tracking-wide ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Item</span>
+                  <span className={`col-span-4 text-xs font-semibold uppercase tracking-wide ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Description</span>
+                  <span className={`col-span-2 text-xs font-semibold uppercase tracking-wide ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Qty</span>
+                  <span className={`col-span-2 text-xs font-semibold uppercase tracking-wide ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Price</span>
+                  <span className="col-span-1"></span>
+                </div>
                 <div className="space-y-3">
                   {invoiceData.items.map((item, index) => {
                     const itemErr = errors.itemErrors?.[index] || {};
                     return (
                       <div key={item.id}>
                         <div className="grid grid-cols-12 gap-2">
-                          <input
-                            type="text"
-                            placeholder="Description *"
-                            value={item.description}
-                            onChange={(e) => updateItem(item.id, 'description', e.target.value)}
-                            className={`col-span-5 px-3 py-2 rounded border ${
-                              itemErr.description ? 'border-red-500' : (isDarkMode ? 'border-gray-600' : 'border-gray-300')
-                            } ${
-                              isDarkMode 
-                                ? 'bg-gray-700 text-white placeholder-gray-400' 
-                                : 'bg-white text-gray-900 placeholder-gray-500'
-                            }`}
-                          />
+                          <div className="col-span-3">
+                            <label className="block text-xs font-medium mb-1 md:hidden text-gray-500">Item</label>
+                            <input
+                              type="text"
+                              placeholder="Item Name *"
+                              value={item.name}
+                              onChange={(e) => updateItem(item.id, 'name', e.target.value)}
+                              className={`w-full px-3 py-2 rounded border ${
+                                itemErr.name ? 'border-red-500' : (isDarkMode ? 'border-gray-600' : 'border-gray-300')
+                              } ${
+                                isDarkMode 
+                                  ? 'bg-gray-700 text-white placeholder-gray-400' 
+                                  : 'bg-white text-gray-900 placeholder-gray-500'
+                              }`}
+                            />
+                          </div>
+                          <div className="col-span-4">
+                            <label className="block text-xs font-medium mb-1 md:hidden text-gray-500">Description</label>
+                            <input
+                              type="text"
+                              placeholder="Description"
+                              value={item.description}
+                              onChange={(e) => updateItem(item.id, 'description', e.target.value)}
+                              className={`w-full px-3 py-2 rounded border ${
+                                isDarkMode ? 'border-gray-600' : 'border-gray-300'
+                              } ${
+                                isDarkMode 
+                                  ? 'bg-gray-700 text-white placeholder-gray-400' 
+                                  : 'bg-white text-gray-900 placeholder-gray-500'
+                              }`}
+                            />
+                          </div>
                           <input
                             type="number"
                             placeholder="Qty"
@@ -895,7 +971,7 @@ export default function InvoiceForm() {
                             placeholder="Rate"
                             value={item.rate}
                             onChange={(e) => updateItem(item.id, 'rate', parseFloat(e.target.value))}
-                            className={`col-span-3 px-3 py-2 rounded border ${
+                            className={`col-span-2 px-3 py-2 rounded border ${
                               itemErr.rate ? 'border-red-500' : (isDarkMode ? 'border-gray-600' : 'border-gray-300')
                             } ${
                               isDarkMode 
@@ -905,7 +981,7 @@ export default function InvoiceForm() {
                           />
                           <button
                             onClick={() => removeItem(item.id)}
-                            className="col-span-2 p-2 text-red-500 hover:bg-red-50 rounded"
+                            className="col-span-1 p-2 text-red-500 hover:bg-red-50 rounded"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -947,7 +1023,7 @@ export default function InvoiceForm() {
                   </div>
                   <div>
                     <label className={`block text-sm font-medium mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                      Discount (₦)
+                      Discount ({getCurrency(invoiceData.currency || 'NGN').symbol})
                     </label>
                     <input
                       type="number"
@@ -1007,7 +1083,7 @@ export default function InvoiceForm() {
                   }}
                   disabled={loading}
                   type="button"
-                  className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium flex items-center justify-center gap-2 transition shadow-lg"
+                  className="flex-1 px-4 py-3 bg-brand-emerald text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 font-medium flex items-center justify-center gap-2 transition shadow-lg"
                 >
                   <FileText className="w-4 h-4" /> {loading ? (isEditMode ? 'Updating...' : 'Creating...') : (isEditMode ? 'Update Invoice' : 'Finish Create Invoice')}
                 </button>
@@ -1025,25 +1101,25 @@ export default function InvoiceForm() {
                   <div className="flex justify-between">
                     <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>Subtotal:</span>
                     <span className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                      ₦{subtotal.toLocaleString()}
+                      {formatCurrency(subtotal, invoiceData.currency)}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>Tax ({invoiceData.taxRate}%):</span>
                     <span className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                      ₦{tax.toLocaleString()}
+                      {formatCurrency(tax, invoiceData.currency)}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>Discount:</span>
                     <span className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                      -₦{invoiceData.discount.toLocaleString()}
+                      -{formatCurrency(invoiceData.discount, invoiceData.currency)}
                     </span>
                   </div>
                   <div className="border-t pt-2 flex justify-between">
                     <span className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Total:</span>
                     <span className={`text-lg font-bold ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>
-                      ₦{total.toLocaleString()}
+                      {formatCurrency(total, invoiceData.currency)}
                     </span>
                   </div>
                 </div>
@@ -1052,11 +1128,12 @@ export default function InvoiceForm() {
           </div>
         ) : (
           // Preview Tab
-          <div className="bg-white rounded-lg overflow-hidden shadow-lg">
+          <div>
             <InvoicePreview
               invoiceData={invoiceData}
               template={selectedTemplate}
               isFullPage={true}
+              isDarkMode={isDarkMode}
             />
           </div>
         )}

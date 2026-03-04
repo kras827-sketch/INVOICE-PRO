@@ -18,13 +18,13 @@ export default function ThankYouPage() {
   };
 
   return (
-    <div className={`min-h-screen ${isDarkMode ? 'bg-gradient-to-br from-gray-900 to-gray-800' : 'bg-gradient-to-br from-blue-50 to-indigo-100'} flex items-center justify-center px-4 py-8`}>
+    <div className={`min-h-screen ${isDarkMode ? 'bg-gradient-to-br from-gray-900 to-gray-800' : 'bg-gradient-to-br from-emerald-50 to-teal-50'} flex items-center justify-center px-4 py-8`}>
       <div className={`text-center max-w-md ${isDarkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-2xl p-12`}>
         
         {/* Success Icon */}
         <div className="flex justify-center mb-8">
-          <div className={`p-6 ${isDarkMode ? 'bg-green-900 bg-opacity-30' : 'bg-green-100'} rounded-full`}>
-            <CheckCircle className="w-24 h-24 text-green-500" strokeWidth={1.5} />
+          <div className={`p-6 ${isDarkMode ? 'bg-emerald-900 bg-opacity-30' : 'bg-emerald-100'} rounded-full`}>
+            <CheckCircle className="w-24 h-24 text-emerald-500" strokeWidth={1.5} />
           </div>
         </div>
 
@@ -34,7 +34,7 @@ export default function ThankYouPage() {
         </h1>
 
         {/* Subheading */}
-        <p className={`text-lg mb-8 font-semibold ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+        <p className={`text-lg mb-8 font-semibold ${isDarkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>
           {subTitle}
         </p>
 
@@ -46,19 +46,19 @@ export default function ThankYouPage() {
         {/* Features List */}
         <div className="mb-12 space-y-3 text-left">
           <div className="flex items-center gap-3">
-            <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+            <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" />
             <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>
               PDF saved successfully
             </span>
           </div>
           <div className="flex items-center gap-3">
-            <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+            <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" />
             <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>
               Email sent to recipient
             </span>
           </div>
           <div className="flex items-center gap-3">
-            <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+            <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" />
             <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>
               Invoice ready for tracking
             </span>
@@ -68,7 +68,7 @@ export default function ThankYouPage() {
         {/* Done Button */}
         <button
           onClick={handleDone}
-          className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 group shadow-lg hover:shadow-xl"
+          className="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 group shadow-lg hover:shadow-xl"
         >
           Go to Dashboard
           <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />

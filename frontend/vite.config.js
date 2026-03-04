@@ -7,6 +7,7 @@ export default defineConfig({
   server: {
     // Development server configuration
     port: 5173,
+    strictPort: true, // fail if port is in use instead of trying other ports
     proxy: {
       '/api': {
         target: 'http://localhost:5000',

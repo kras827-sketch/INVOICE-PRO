@@ -11,9 +11,15 @@ import Dashboard from './components/Dashboard';
 import InvoiceForm from './components/InvoiceForm';
 import InvoiceDecision from './components/InvoiceDecision';
 import InvoiceViewer from './components/InvoiceViewer';
+import SendEmail from './components/SendEmail';
 import PricingPage from './components/PricingPage';
 import Settings from './components/Settings';
 import ThankYouPage from './components/ThankYouPage';
+import Analytics from './components/Analytics';
+import ReceiptVerification from './components/ReceiptVerification';
+import ModernReceiptPreview from './components/ModernReceiptPreview';
+import ReceiptSuccess from './components/ReceiptSuccess';
+import InvoicePDFPreview from './components/InvoicePDFPreview';
 
 function App() {
   return (
@@ -31,12 +37,20 @@ function App() {
 
             {/* Protected Routes */}
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
             <Route path="/invoice/create" element={<ProtectedRoute><InvoiceForm /></ProtectedRoute>} />
             <Route path="/invoice/decision" element={<ProtectedRoute><InvoiceDecision /></ProtectedRoute>} />
             <Route path="/invoice/:id" element={<ProtectedRoute><InvoiceViewer /></ProtectedRoute>} />
             <Route path="/invoice/:id/edit" element={<ProtectedRoute><InvoiceForm /></ProtectedRoute>} />
+            <Route path="/invoice/:id/preview" element={<ProtectedRoute><InvoicePDFPreview /></ProtectedRoute>} />
+            <Route path="/invoice/:id/send" element={<ProtectedRoute><SendEmail /></ProtectedRoute>} />
+            <Route path="/invoice/:id/receipt-preview" element={<ProtectedRoute><ModernReceiptPreview /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/thank-you" element={<ProtectedRoute><ThankYouPage /></ProtectedRoute>} />
+            <Route path="/receipt-success" element={<ProtectedRoute><ReceiptSuccess /></ProtectedRoute>} />
+
+            {/* Public Receipt Verification */}
+            <Route path="/verify/:receipt_id" element={<ReceiptVerification />} />
 
             {/* Catch all - redirect to home */}
             <Route path="*" element={<Navigate to="/" replace />} />

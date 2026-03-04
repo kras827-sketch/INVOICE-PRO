@@ -1,13 +1,14 @@
 // backend/server.js
 // Main server file
 
+// Load environment variables FIRST - before any other imports
+const dotenv = require('dotenv');
+dotenv.config();
+
 const express = require('express');
 const cors = require('cors');
-const dotenv = require('dotenv');
 const connectDB = require('./config/db');
-
-// Load environment variables
-dotenv.config();
+const { initTransporter } = require('./services/otpService');
 
 // Initialize Firebase FIRST (before any routes use it)
 require('./config/firebase');
@@ -15,6 +16,8 @@ require('./config/firebase');
 // Import routes
 const authRoutes = require('./routes/authRoutes');
 const invoiceRoutes = require('./routes/invoiceRoutes');
+const receiptRoutes = require('./routes/receiptRoutes');
+const analyticsRoutes = require('./routes/analyticsRoutes');
 const userRoutes = require('./routes/userRoutes');
 const emailRoutes = require('./routes/emailRoutes');
 
@@ -66,9 +69,27 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Email diagnostics endpoint (for debugging)
+app.get('/api/health/email', (req, res) => {
+  const emailConfig = {
+    service: process.env.EMAIL_SERVICE || 'gmail',
+    userSet: !!process.env.EMAIL_USER,
+    passSet: !!process.env.EMAIL_PASS,
+    configured: !!(process.env.EMAIL_USER && process.env.EMAIL_PASS)
+  };
+  
+  res.json({
+    status: 'ok',
+    email: emailConfig,
+    message: emailConfig.configured ? `Email service (${emailConfig.service}) configured` : 'Email service NOT configured - OTP will fail'
+  });
+});
+
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/invoices', invoiceRoutes);
+app.use('/api/receipts', receiptRoutes);
+app.use('/api/analytics', analyticsRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/email', emailRoutes);
 
@@ -100,20 +121,46 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log(`
+// Initialize email service (SMTP)
+initTransporter().then((initialized) => {
+  const emailStatus = initialized ? `SMTP (${process.env.EMAIL_SERVICE || 'gmail'})` : 'SMTP (unverified)';
+  const extraNote = initialized ? '' : ' (email verification failed or skipped; emails may not send)';
+
+  app.listen(PORT, () => {
+    console.log(`
   ╔═══════════════════════════════════════╗
   ║   🚀 InvoicePro API Server Running   ║
   ╠═══════════════════════════════════════╣
   ║   Port: ${PORT}                        ║
   ║   Environment: ${process.env.NODE_ENV || 'development'}        ║
+  ╠═══════════════════════════════════════╣
+  ║   Email: ${emailStatus}${extraNote}             ║
   ║   URL: http://localhost:${PORT}        ║
   ╚═══════════════════════════════════════╝
-  `);
+    `);
+  });
+
+}).catch((err) => {
+  // This should be rare — initTransporter now returns false on verify failures instead of throwing.
+  console.error('⚠️ Email service initialization unexpected error:', err?.message || err);
+  console.log('ℹ️ Server will start but email features may not work');
+  // Still start the server even if email init threw
+  app.listen(PORT, () => {
+    console.log(`
+  ╔═══════════════════════════════════════╗
+  ║   🚀 InvoicePro API Server Running   ║
+  ║   (Email service offline)             ║
+  ╠═══════════════════════════════════════╣
+  ║   Port: ${PORT}                        ║
+  ║   Environment: ${process.env.NODE_ENV || 'development'}        ║
+  ║   URL: http://localhost:${PORT}        ║
+  ╚═══════════════════════════════════════╝
+    `);
+  });
 });
 
 // Handle unhandled rejections
 process.on('unhandledRejection', (err) => {
   console.error('Unhandled Promise Rejection:', err);
-  process.exit(1);
+  // Do not exit — allow server to continue running
 });

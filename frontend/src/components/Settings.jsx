@@ -3,11 +3,11 @@ import { Save, Upload, Crown, LogOut, Mail, MapPin, Building2 } from 'lucide-rea
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../services/api';
 import toast from 'react-hot-toast';
 
 export default function Settings() {
-  const { user, firebaseUser, logout } = useAuth();
+  const { user, firebaseUser, logout, refreshUser } = useAuth();
   const { isDarkMode } = useTheme();
   const navigate = useNavigate();
   const logoInputRef = useRef(null);
@@ -15,6 +15,7 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState('profile'); // profile, business, subscription
   const [loading, setLoading] = useState(false);
   const [logoPreview, setLogoPreview] = useState(null);
+  const [businessErrors, setBusinessErrors] = useState({});
 
   const [profileData, setProfileData] = useState({
     firstName: '',
@@ -156,43 +157,24 @@ export default function Settings() {
       }
       setLoading(true);
       const name = `${profileData.firstName} ${profileData.lastName}`.trim();
-      
-      // Get token - try firebaseUser first, then localStorage
-      let token;
-      if (firebaseUser) {
-        console.log('🔑 Getting token from Firebase user:', firebaseUser.email);
-        token = await firebaseUser.getIdToken();
-      } else {
-        token = localStorage.getItem('token');
-        console.log('🔑 Got token from localStorage:', !!token);
-      }
 
-      if (!token) {
-        toast.error('Authentication required - please log in again');
-        return;
-      }
-
-      const apiUrl = `${import.meta.env.VITE_API_URL}/api/users/profile`;
-      console.log('📤 Saving profile to:', apiUrl);
+      console.log('📤 Saving profile...');
       console.log('📋 Payload:', { name, email: profileData.email });
 
-      const response = await axios.put(
-        apiUrl,
-        { name, email: profileData.email },
-        { 
-          headers: { 
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          } 
-        }
+      const response = await api.put('/users/profile', 
+        { name, email: profileData.email }
       );
 
       console.log('📥 Response:', response.data);
 
       if (response.data.success) {
         const updatedUser = response.data.user;
-        localStorage.setItem('user', JSON.stringify(updatedUser));
-        console.log('✅ Profile saved to localStorage');
+        // Merge with existing localStorage (to preserve businessProfile etc)
+        const existingUser = JSON.parse(localStorage.getItem('user') || '{}');
+        const mergedUser = { ...existingUser, ...updatedUser };
+        localStorage.setItem('user', JSON.stringify(mergedUser));
+        refreshUser(); // Sync AuthContext state
+        console.log('✅ Profile saved and context refreshed');
         toast.success('Profile updated successfully');
         
         // Redirect to dashboard after a short delay
@@ -215,26 +197,22 @@ export default function Settings() {
   // Save business details
   const handleSaveBusinessDetails = async () => {
     try {
-      if (!businessData.businessName.trim()) {
-        toast.error('Business name is required');
+      // Validate all required fields
+      const errors = {};
+      if (!businessData.businessName.trim()) errors.businessName = 'Business name is required';
+      if (!businessData.businessEmail.trim()) errors.businessEmail = 'Business email is required';
+      else if (!/\S+@\S+\.\S+/.test(businessData.businessEmail)) errors.businessEmail = 'Enter a valid email';
+      if (!businessData.businessPhone.trim()) errors.businessPhone = 'Phone number is required';
+      if (!businessData.businessAddress.trim()) errors.businessAddress = 'Business address is required';
+
+      setBusinessErrors(errors);
+
+      if (Object.keys(errors).length > 0) {
+        const missing = Object.values(errors);
+        toast.error(`Please fix: ${missing.join(', ')}`);
         return;
       }
       setLoading(true);
-      
-      // Get token - try firebaseUser first, then localStorage
-      let token;
-      if (firebaseUser) {
-        console.log('🔑 Getting token from Firebase user:', firebaseUser.email);
-        token = await firebaseUser.getIdToken();
-      } else {
-        token = localStorage.getItem('token');
-        console.log('🔑 Got token from localStorage:', !!token);
-      }
-
-      if (!token) {
-        toast.error('Authentication required - please log in again');
-        return;
-      }
 
       const payload = {
         businessName: businessData.businessName,
@@ -250,20 +228,10 @@ export default function Settings() {
         }
       };
 
-      const apiUrl = `${import.meta.env.VITE_API_URL}/api/users/business-profile`;
-      console.log('📤 Saving business profile to:', apiUrl);
+      console.log('📤 Saving business profile...');
       console.log('📋 Payload:', payload);
 
-      const response = await axios.put(
-        apiUrl,
-        payload,
-        { 
-          headers: { 
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          } 
-        }
-      );
+      const response = await api.put('/users/business-profile', payload);
 
       console.log('📥 Response:', response.data);
 
@@ -271,7 +239,8 @@ export default function Settings() {
         const stored = JSON.parse(localStorage.getItem('user') || '{}');
         stored.businessProfile = response.data.businessProfile;
         localStorage.setItem('user', JSON.stringify(stored));
-        console.log('✅ Business profile saved to localStorage');
+        refreshUser(); // Sync AuthContext state so InvoiceForm and Settings see the updated data
+        console.log('✅ Business profile saved and context refreshed');
         toast.success('Business details updated successfully');
         
         // Redirect to dashboard after a short delay
@@ -401,7 +370,7 @@ export default function Settings() {
               <button
                 onClick={handleSaveProfile}
                 disabled={loading}
-                className="w-full md:w-auto px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 font-medium flex items-center justify-center gap-2"
+                className="w-full md:w-auto px-6 py-3 bg-brand-emerald text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 font-medium flex items-center justify-center gap-2"
               >
                 <Save className="w-4 h-4" /> Save Changes
               </button>
@@ -450,54 +419,60 @@ export default function Settings() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Business Name
+                    Business Name <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     name="businessName"
+                    placeholder="e.g. Acme Ltd"
                     value={businessData.businessName}
                     onChange={handleBusinessChange}
                     className={`w-full px-4 py-2 rounded-lg border ${
-                      isDarkMode
-                        ? 'bg-gray-700 border-gray-600 text-white'
-                        : 'bg-white border-gray-300 text-gray-900'
-                    }`}
+                      businessErrors.businessName
+                        ? 'border-red-500'
+                        : isDarkMode ? 'border-gray-600' : 'border-gray-300'
+                    } ${isDarkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-900'}`}
                   />
+                  {businessErrors.businessName && <p className="text-red-500 text-xs mt-1">{businessErrors.businessName}</p>}
                 </div>
                 <div>
                   <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Business Email
+                    Business Email <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="email"
                     name="businessEmail"
+                    placeholder="e.g. info@acme.com"
                     value={businessData.businessEmail}
                     onChange={handleBusinessChange}
                     className={`w-full px-4 py-2 rounded-lg border ${
-                      isDarkMode
-                        ? 'bg-gray-700 border-gray-600 text-white'
-                        : 'bg-white border-gray-300 text-gray-900'
-                    }`}
+                      businessErrors.businessEmail
+                        ? 'border-red-500'
+                        : isDarkMode ? 'border-gray-600' : 'border-gray-300'
+                    } ${isDarkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-900'}`}
                   />
+                  {businessErrors.businessEmail && <p className="text-red-500 text-xs mt-1">{businessErrors.businessEmail}</p>}
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Business Phone
+                    Business Phone <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="tel"
                     name="businessPhone"
+                    placeholder="e.g. +234 800 123 4567"
                     value={businessData.businessPhone}
                     onChange={handleBusinessChange}
                     className={`w-full px-4 py-2 rounded-lg border ${
-                      isDarkMode
-                        ? 'bg-gray-700 border-gray-600 text-white'
-                        : 'bg-white border-gray-300 text-gray-900'
-                    }`}
+                      businessErrors.businessPhone
+                        ? 'border-red-500'
+                        : isDarkMode ? 'border-gray-600' : 'border-gray-300'
+                    } ${isDarkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-900'}`}
                   />
+                  {businessErrors.businessPhone && <p className="text-red-500 text-xs mt-1">{businessErrors.businessPhone}</p>}
                 </div>
                 <div>
                   <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
@@ -519,19 +494,21 @@ export default function Settings() {
 
               <div>
                 <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  <MapPin className="w-4 h-4 inline mr-2" /> Business Address
+                  <MapPin className="w-4 h-4 inline mr-2" /> Business Address <span className="text-red-500">*</span>
                 </label>
                 <textarea
                   name="businessAddress"
+                  placeholder="e.g. 12 Marina Road, Lagos, Nigeria"
                   value={businessData.businessAddress}
                   onChange={handleBusinessChange}
                   rows="3"
                   className={`w-full px-4 py-2 rounded-lg border ${
-                    isDarkMode
-                      ? 'bg-gray-700 border-gray-600 text-white'
-                      : 'bg-white border-gray-300 text-gray-900'
-                  }`}
+                    businessErrors.businessAddress
+                      ? 'border-red-500'
+                      : isDarkMode ? 'border-gray-600' : 'border-gray-300'
+                  } ${isDarkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-900'}`}
                 />
+                {businessErrors.businessAddress && <p className="text-red-500 text-xs mt-1">{businessErrors.businessAddress}</p>}
               </div>
 
               {/* Bank Details */}
@@ -583,7 +560,7 @@ export default function Settings() {
               <button
                 onClick={handleSaveBusinessDetails}
                 disabled={loading}
-                className="w-full md:w-auto px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 font-medium flex items-center justify-center gap-2"
+                className="w-full md:w-auto px-6 py-3 bg-brand-emerald text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 font-medium flex items-center justify-center gap-2"
               >
                 <Save className="w-4 h-4" /> Save Business Details
               </button>
@@ -600,7 +577,7 @@ export default function Settings() {
 
             {/* Current Plan */}
             <div className={`p-6 rounded-lg mb-6 border-2 ${
-              isDarkMode ? 'bg-blue-900/20 border-blue-500' : 'bg-blue-50 border-blue-200'
+              isDarkMode ? 'bg-brand-navy/20 border-brand-navy' : 'bg-blue-50 border-blue-200'
             }`}>
               <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                 Current Plan: <span className="text-blue-500">{subscription.plan.toUpperCase()}</span>

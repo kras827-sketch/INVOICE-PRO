@@ -3,13 +3,18 @@
 
 const Invoice = require('../models/Invoice');
 const invoiceEmailService = require('../services/invoiceEmailService');
+const receiptService = require('../services/receiptService');
 const PDFDocument = require('pdfkit');
 const stream = require('stream');
+const { formatCurrency } = require('../utils/currencyUtils');
 
 // @desc    Create new invoice
 exports.createInvoice = async (req, res) => {
   try {
+    console.log('🚀 createInvoice: Request received');
     const userId = req.user._id;
+    console.log('👤 createInvoice: User ID', userId);
+
     const {
       items,
       client,
@@ -19,7 +24,10 @@ exports.createInvoice = async (req, res) => {
       notes = '',
       terms = '',
       template,
+      currency = 'NGN',
+      locale = 'en-NG',
       discount = 0,
+      bankDetails,
     } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -35,11 +43,14 @@ exports.createInvoice = async (req, res) => {
     }
 
     // Generate invoice number
+    console.log('🔢 createInvoice: Calling generateInvoiceNumber...');
     const invoiceNumber = await Invoice.generateInvoiceNumber(userId);
+    console.log('✅ createInvoice: Generated invoice number:', invoiceNumber);
 
     // Ensure items are in correct format
     const formattedItems = items.map(item => ({
-      name: item.name || item.description || 'Item',
+      name: item.name || 'Item',
+      description: item.description || '',
       quantity: item.quantity || 1,
       price: item.price || item.rate || 0
     }));
@@ -67,7 +78,10 @@ exports.createInvoice = async (req, res) => {
       notes,
       terms,
       template: template || 'modern-clean',
+      currency: currency || 'NGN',
+      locale: locale || 'en-NG',
       discount,
+      bankDetails: bankDetails || undefined,
     });
 
     await invoice.save();
@@ -228,6 +242,15 @@ exports.downloadPDF = async (req, res) => {
       doc.fontSize(9).fillColor('#555').text(invoice.notes);
     }
 
+    if (invoice.bankDetails && invoice.bankDetails.bankName) {
+      doc.moveDown(0.5);
+      doc.fontSize(10).fillColor('#333').text('Payment Details:', { underline: true });
+      doc.fontSize(9).fillColor('#555');
+      doc.text(`Bank Name: ${invoice.bankDetails.bankName}`);
+      doc.text(`Account Name: ${invoice.bankDetails.accountName}`);
+      doc.text(`Account No: ${invoice.bankDetails.accountNumber}`);
+    }
+
     doc.end();
   } catch (err) {
     console.error('Download PDF error:', err);
@@ -246,19 +269,35 @@ exports.sendInvoice = async (req, res) => {
     }
 
     // Determine recipient
-    const recipient = req.body.email || invoice.client?.email;
-    if (!recipient) return res.status(400).json({ success: false, message: 'Recipient email required' });
+    let recipient = req.body.email;
+    if (!recipient) {
+      console.log('⚠️ No email in body, defaulting to client email');
+      recipient = invoice.client?.email;
+    }
+    
+    if (!recipient) {
+      console.error('❌ No recipient email found in body or invoice client details');
+      return res.status(400).json({ success: false, message: 'Recipient email required' });
+    }
+
+    console.log(`📧 Preparing to send invoice ${invoice.invoiceNumber} to ${recipient}`);
 
     // Try to obtain pdf buffer from upload or base64 body
     let pdfBuffer = null;
     if (req.file && req.file.buffer) {
+      console.log('📄 PDF found in req.file');
       pdfBuffer = req.file.buffer;
     } else if (req.body.pdf) {
       try {
+        console.log('📄 PDF string found in req.body, decoding base64...');
         pdfBuffer = Buffer.from(req.body.pdf, 'base64');
+        console.log(`✅ PDF decoded, size: ${pdfBuffer.length} bytes`);
       } catch (e) {
+        console.error('❌ Failed to decode PDF base64:', e.message);
         pdfBuffer = null;
       }
+    } else {
+      console.log('ℹ️ No PDF provided, will generate server-side');
     }
 
     // If no PDF provided, generate a simple PDF server-side using pdfkit
@@ -275,9 +314,9 @@ exports.sendInvoice = async (req, res) => {
       });
 
       // Header
-      doc.fontSize(18).text(invoice.company?.name || 'Invoice', { align: 'left' });
+      doc.fontSize(18).fillColor('#0F172A').text(invoice.company?.name || 'Invoice', { align: 'left' });
       doc.moveDown(0.25);
-      doc.fontSize(10).fillColor('#666').text(`Invoice #: ${invoice.invoiceNumber}`);
+      doc.fontSize(10).fillColor('#334155').text(`Invoice #: ${invoice.invoiceNumber}`);
       doc.text(`Date: ${invoice.invoiceDate ? new Date(invoice.invoiceDate).toLocaleDateString() : ''}`);
       if (invoice.dueDate) doc.text(`Due: ${new Date(invoice.dueDate).toLocaleDateString()}`);
       doc.moveDown(0.5);
@@ -297,26 +336,28 @@ exports.sendInvoice = async (req, res) => {
 
       // Items table header
       doc.moveDown(0.5);
-      doc.fontSize(11).text('Description', { continued: true, width: 300 });
-      doc.text('Qty', { align: 'right', continued: true });
-      doc.text('Price', { align: 'right', continued: true });
+      doc.fontSize(11).text('Item', { continued: true, width: 150 });
+      doc.text('Description', { continued: true, width: 200 });
+      doc.text('Qty', { align: 'right', continued: true, width: 50 });
+      doc.text('Price', { align: 'right', continued: true, width: 80 });
       doc.text('Total', { align: 'right' });
       doc.moveDown(0.25);
 
       invoice.items.forEach((it) => {
-        doc.fontSize(10).fillColor('#000').text(it.name, { continued: true, width: 300 });
-        doc.text(String(it.quantity), { align: 'right', continued: true });
-        doc.text(`₦${(it.price || 0).toLocaleString()}`, { align: 'right', continued: true });
+        doc.fontSize(10).fillColor('#000').text(it.name, { continued: true, width: 150 });
+        doc.text(it.description || '-', { continued: true, width: 200 });
+        doc.text(String(it.quantity), { align: 'right', continued: true, width: 50 });
+        doc.text(`${formatCurrency(it.price || 0, invoice.currency)}`, { align: 'right', continued: true, width: 80 });
         const lineTotal = (it.quantity || 0) * (it.price || 0);
-        doc.text(`₦${lineTotal.toLocaleString()}`, { align: 'right' });
+        doc.text(`${formatCurrency(lineTotal, invoice.currency)}`, { align: 'right' });
       });
 
       doc.moveDown(0.5);
-      doc.fontSize(11).text(`Subtotal: ₦${(invoice.subtotal || 0).toLocaleString()}`, { align: 'right' });
-      doc.text(`Tax (${invoice.taxRate || 0}%): ₦${(invoice.taxAmount || 0).toLocaleString()}`, { align: 'right' });
-      if (invoice.discount) doc.text(`Discount: -₦${invoice.discount.toLocaleString()}`, { align: 'right' });
+      doc.fontSize(11).text(`Subtotal: ${formatCurrency(invoice.subtotal || 0, invoice.currency)}`, { align: 'right' });
+      doc.text(`Tax (${invoice.taxRate || 0}%): ${formatCurrency(invoice.taxAmount || 0, invoice.currency)}`, { align: 'right' });
+      if (invoice.discount) doc.text(`Discount: -${formatCurrency(invoice.discount, invoice.currency)}`, { align: 'right' });
       doc.moveDown(0.25);
-      doc.fontSize(13).text(`Total: ₦${(invoice.total || 0).toLocaleString()}`, { align: 'right' });
+      doc.fontSize(13).text(`Total: ${formatCurrency(invoice.total || 0, invoice.currency)}`, { align: 'right' });
 
       if (invoice.notes) {
         doc.moveDown(0.5);
@@ -329,18 +370,17 @@ exports.sendInvoice = async (req, res) => {
       await genPromise;
     }
 
-    // Build a simple HTML body for the email
-    const htmlContent = `
-      <html>
-        <body style="font-family: Arial, sans-serif; color: #333;">
-          <h2>Invoice ${invoice.invoiceNumber}</h2>
-          <p>Dear ${invoice.client?.name || 'Customer'},</p>
-          <p>Please find attached your invoice. Total amount due: <strong>₦${(invoice.total || 0).toLocaleString()}</strong></p>
-          <p>Due Date: ${invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : 'N/A'}</p>
-          <p>Thank you for your business.</p>
-        </body>
-      </html>
-    `;
+    // Generate professional email HTML
+    const emailTemplates = require('../services/emailTemplates');
+    const htmlContent = emailTemplates.generateInvoiceEmailHTML({
+      invoiceNumber: invoice.invoiceNumber,
+      clientName: invoice.client?.name || 'Valued Customer',
+      amount: invoice.total || 0,
+      currency: invoice.currency || 'NGN',
+      dueDate: invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : 'Due upon receipt',
+      paymentLink: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/invoice/${invoice._id}`,
+      businessLogo: invoice.company?.logo
+    });
 
     // Send email with attachment using dedicated invoice email service
     const result = await invoiceEmailService.sendInvoiceEmail({
@@ -373,5 +413,111 @@ exports.getStats = async (req, res) => {
   } catch (err) {
     console.error('Get stats error:', err);
     res.status(500).json({ success: false, message: 'Server error fetching stats' });
+  }
+};
+
+// @desc    Mark invoice as paid - creates receipt and sends email
+// Route: PUT /api/invoices/:id/mark-as-paid
+exports.markAsPaid = async (req, res) => {
+  try {
+    const invoice = await Invoice.findById(req.params.id);
+    if (!invoice) {
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
+    }
+
+    if (String(invoice.user) !== String(req.user._id)) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    // Update invoice status
+    invoice.status = 'paid';
+    await invoice.save();
+    console.log('✅ Invoice marked as paid:', invoice.invoiceNumber);
+
+    // Create receipt (it will be auto-generated if it doesn't exist)
+    let receipt = null;
+    try {
+      receipt = await receiptService.createReceiptFromInvoice(
+        invoice._id,
+        req.user._id,
+        {
+          paymentMethod: req.body.paymentMethod || 'bank_transfer',
+          paymentDate: req.body.paymentDate || new Date()
+        }
+      );
+
+      // Generate PDF
+      const pdfBuffer = await receiptService.generateReceiptPDF(receipt);
+
+      // Send receipt email
+      await receiptService.sendReceiptEmail(receipt, pdfBuffer);
+      console.log('✅ Receipt created and email sent for invoice:', invoice.invoiceNumber);
+    } catch (receiptError) {
+      console.error('⚠️ Receipt creation error (non-fatal):', receiptError.message);
+      // Don't fail the entire request if receipt creation fails
+      // The invoice is already marked as paid
+    }
+
+    res.json({
+      success: true,
+      message: 'Invoice marked as paid',
+      invoice: {
+        _id: invoice._id,
+        invoiceNumber: invoice.invoiceNumber,
+        status: invoice.status,
+        total: invoice.total
+      },
+      receipt: receipt ? {
+        _id: receipt._id,
+        receiptNumber: receipt.receiptNumber,
+        publicReceiptId: receipt.publicReceiptId,
+        verificationUrl: receipt.verificationUrl
+      } : null
+    });
+  } catch (error) {
+    console.error('❌ Mark as paid error:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Error marking invoice as paid',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Mark invoice as paid - ONLY updates status (no automated receipt)
+// Route: PUT /api/invoices/:id/mark-paid-only
+exports.markPaidOnly = async (req, res) => {
+  try {
+    const invoice = await Invoice.findById(req.params.id);
+    if (!invoice) {
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
+    }
+
+    if (String(invoice.user) !== String(req.user._id)) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    // Update invoice status
+    invoice.status = 'paid';
+    await invoice.save();
+    console.log('✅ Invoice marked as paid only (no automated receipt):', invoice.invoiceNumber);
+
+    res.json({
+      success: true,
+      message: 'Invoice marked as paid',
+      invoice: {
+        _id: invoice._id,
+        invoiceNumber: invoice.invoiceNumber,
+        status: invoice.status,
+        total: invoice.total
+      }
+    });
+  } catch (error) {
+    console.error('❌ Mark as paid only error:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Error marking invoice as paid',
+      error: error.message
+    });
   }
 };

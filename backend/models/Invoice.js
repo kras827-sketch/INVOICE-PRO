@@ -1,307 +1,187 @@
-// backend/src/models/Invoice.js
-// Invoice model - Defines structure of invoices in MongoDB
-
 const mongoose = require('mongoose');
 
-/**
- * Item Schema - Individual line item in invoice
- */
-const itemSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
-  },
-  quantity: {
-    type: Number,
-    required: true,
-    min: 1,
-  },
-  price: {
-    type: Number,
-    required: true,
-    min: 0,
-  },
-  // Calculated automatically
-  total: {
-    type: Number,
-  },
-}, { _id: false }); // Don't create separate IDs for items
-
-// Calculate item total before saving
-itemSchema.pre('save', function() {
-  this.total = this.quantity * this.price;
-});
-
-/**
- * Invoice Schema
- * Stores complete invoice data
- */
 const invoiceSchema = new mongoose.Schema({
-  // Reference to user who created this invoice
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
-    index: true, // Faster queries by user
+    required: true
   },
-  
-  // Auto-generated invoice number (e.g., INV-2024-0001)
   invoiceNumber: {
     type: String,
-    required: true,
-    unique: true,
+    required: true
   },
-  
-  // Invoice dates
   invoiceDate: {
     type: Date,
-    default: Date.now,
-    required: true,
+    default: Date.now
   },
-  
   dueDate: {
-    type: Date,
+    type: Date
   },
-  
-  // Company information (who is sending the invoice)
-  company: {
-    name: {
-      type: String,
-      required: true,
-    },
-    address: {
-      type: String,
-      default: '',
-    },
-    email: String,
-    phone: String,
-    logo: String, // URL to uploaded logo
-    stamp: String, // URL to uploaded stamp
-  },
-  
-  // Client information (who receives the invoice)
-  client: {
-    name: {
-      type: String,
-      required: true,
-    },
-    address: {
-      type: String,
-      default: '',
-    },
-    email: String,
-    phone: String,
-  },
-  
-  // Invoice items (array of products/services)
-  items: {
-    type: [itemSchema],
-    required: true,
-    validate: [array => array.length > 0, 'At least one item is required'],
-  },
-  
-  // Financial calculations (auto-calculated by pre-save middleware)
-  subtotal: {
-    type: Number,
-    default: 0,
-    min: 0,
-  },
-  
-  taxRate: {
-    type: Number,
-    default: 0,
-    min: 0,
-    max: 100, // Percentage
-  },
-  
-  taxAmount: {
-    type: Number,
-    default: 0,
-    min: 0,
-  },
-  
-  total: {
-    type: Number,
-    default: 0,
-    min: 0,
-  },
-  
-  // Additional information
-  notes: String,
-  terms: String,
-  
-  // 🎨 Invoice Template
-  template: {
-    type: String,
-    enum: ['modern-clean', 'corporate-blue', 'minimal-white', 'bold-dark', 'elegant-gold', 'creative-gradient', 'architect-grid', 'modern-minimal', 'classic-legal', 'startup-pitch', 'sunrise-gradient', 'monochrome-elegant'],
-    default: 'modern-clean'
-  },
-  
-  // Invoice status
   status: {
     type: String,
-    enum: ['draft', 'sent', 'paid', 'overdue', 'cancelled', 'completed'],
-    default: 'draft',
+    enum: ['draft', 'sent', 'paid', 'overdue', 'completed'],
+    default: 'draft'
   },
-  
-  // Payment tracking (for future features)
-  paymentStatus: {
-    type: String,
-    enum: ['unpaid', 'partial', 'paid'],
-    default: 'unpaid',
+  company: {
+    name: { type: String, required: true },
+    address: String,
+    email: String,
+    phone: String,
+    logo: String
   },
-  
-  paidAmount: {
+  client: {
+    name: { type: String, required: true },
+    address: String,
+    email: String,
+    phone: String
+  },
+  items: [{
+    name: { type: String, required: true },
+    description: String,
+    quantity: { type: Number, required: true, min: 1 },
+    price: { type: Number, required: true, min: 0 }
+  }],
+  subtotal: {
     type: Number,
-    default: 0,
-    min: 0,
+    default: 0
   },
-  
-  paidDate: Date,
-  
-  // Email tracking
-  sentTo: [String], // Array of email addresses invoice was sent to
-  lastSentDate: Date,
-  
-  // 💾 Discount
+  taxRate: {
+    type: Number,
+    default: 0
+  },
+  taxAmount: {
+    type: Number,
+    default: 0
+  },
   discount: {
     type: Number,
-    default: 0,
-    min: 0
+    default: 0
   },
-  
+  total: {
+    type: Number,
+    default: 0
+  },
+  bankDetails: {
+    bankName: String,
+    accountName: String,
+    accountNumber: String
+  },
+  currency: {
+    type: String,
+    default: 'NGN'
+  },
+  locale: {
+    type: String,
+    default: 'en-NG'
+  },
+  notes: String,
+  terms: String,
+  template: {
+    type: String,
+    default: 'modern-clean'
+  },
+  sentTo: [{
+    type: String
+  }],
+  lastSentDate: {
+    type: Date
+  }
 }, {
-  timestamps: true, // Automatically add createdAt and updatedAt
+  timestamps: true
 });
 
-// ============================================
-// MIDDLEWARE - Auto-calculate totals
-// ============================================
-
-/**
- * Calculate subtotal, tax, and total before saving
- * Implements industry-standard invoice calculations including discount
- */
+// Auto-calculate totals before saving
 invoiceSchema.pre('save', function(next) {
-  // Step 1: Calculate subtotal from all items
+  console.log('💾 Pre-save hook triggered for invoice');
+  // Calculate subtotal
   this.subtotal = this.items.reduce((sum, item) => {
     return sum + (item.quantity * item.price);
   }, 0);
+
+  // Calculate tax amount
+  this.taxAmount = (this.subtotal * (this.taxRate / 100));
+
+  // Calculate total
+  this.total = this.subtotal + this.taxAmount - this.discount;
   
-  // Step 2: Round subtotal to 2 decimals
-  this.subtotal = Math.round(this.subtotal * 100) / 100;
-  
-  // Step 3: Calculate tax amount (on subtotal before discount)
-  this.taxAmount = Math.round((this.subtotal * this.taxRate) / 100 * 100) / 100;
-  
-  // Step 4: Apply discount (default 0 if not specified)
-  const discountAmount = Math.round((this.discount || 0) * 100) / 100;
-  
-  // Step 5: Calculate final total (subtotal + tax - discount)
-  // Math.max ensures total never goes negative
-  this.total = Math.max(0, Math.round((this.subtotal + this.taxAmount - discountAmount) * 100) / 100);
-  
+  // Ensure total is not negative
+  if (this.total < 0) this.total = 0;
+
   next();
 });
 
-// ============================================
-// STATIC METHODS
-// ============================================
-
-/**
- * Generate unique invoice number
- * Format: INV-YYYY-XXXX
- * 
- * @param {string} userId - User's ID
- * @returns {string} - Generated invoice number
- */
+// Generate Invoice Number (Static Method)
 invoiceSchema.statics.generateInvoiceNumber = async function(userId) {
-  const year = new Date().getFullYear();
-  
-  // Count invoices created this year by this user
-  const count = await this.countDocuments({
-    user: userId,
-    createdAt: {
-      $gte: new Date(year, 0, 1), // Start of year
-      $lt: new Date(year + 1, 0, 1), // Start of next year
-    },
-  });
-  
-  // Format: INV-2024-0001
-  const number = String(count + 1).padStart(4, '0');
-  return `INV-${year}-${number}`;
+  console.log('🔄 Generating invoice number for user:', userId);
+  const lastInvoice = await this.findOne({ user: userId })
+    .sort({ createdAt: -1 })
+    .select('invoiceNumber');
+
+  if (!lastInvoice || !lastInvoice.invoiceNumber) {
+    return 'INV-001';
+  }
+
+  // Extract number part (assuming format INV-XXX)
+  const parts = lastInvoice.invoiceNumber.split('-');
+  if (parts.length < 2) return 'INV-001';
+
+  const lastNum = parseInt(parts[1], 10);
+  if (isNaN(lastNum)) return 'INV-001';
+
+  const nextNum = lastNum + 1;
+  return `INV-${String(nextNum).padStart(3, '0')}`;
 };
 
-/**
- * Get user's invoice statistics
- * Provides comprehensive analytics for dashboard
- * 
- * Returns:
- * - totalInvoices: Count of all invoices
- * - totalRevenue: Sum of all invoice totals (after discounts)
- * - paidAmount: Sum of all payments received
- * - pendingAmount: Sum of unpaid invoices (outstanding balance)
- * - draftCount: Count of draft invoices
- * - sentCount: Count of sent invoices
- * 
- * @param {string} userId - User's ID
- * @returns {object} - Statistics object
- */
+// Get User Stats (Static Method)
 invoiceSchema.statics.getUserStats = async function(userId) {
   const stats = await this.aggregate([
     { $match: { user: new mongoose.Types.ObjectId(userId) } },
     {
       $group: {
-        _id: null,
+        _id: '$currency',
         totalInvoices: { $sum: 1 },
-        totalRevenue: { $sum: '$total' }, // Already includes discount deduction
+        totalRevenue: { $sum: '$total' },
         paidAmount: { 
-          $sum: {
-            $cond: [
-              { $eq: ['$paymentStatus', 'paid'] },
-              '$total',
-              0
-            ]
-          }
+          $sum: { $cond: [{ $eq: ['$status', 'paid'] }, '$total', 0] } 
         },
         pendingAmount: { 
-          $sum: {
-            $cond: [
-              { $ne: ['$paymentStatus', 'paid'] },
-              '$total',
-              0
-            ]
-          }
-        },
-        draftCount: {
-          $sum: {
-            $cond: [{ $eq: ['$status', 'draft'] }, 1, 0]
-          }
-        },
-        sentCount: {
-          $sum: {
-            $cond: [{ $eq: ['$status', 'sent'] }, 1, 0]
-          }
+          $sum: { $cond: [{ $ne: ['$status', 'paid'] }, '$total', 0] } 
         }
-      },
-    },
+      }
+    }
   ]);
+
+  if (stats.length === 0) {
+    return {
+      totalInvoices: 0,
+      totalRevenue: 0,
+      paidAmount: 0,
+      pendingAmount: 0,
+      byCurrency: []
+    };
+  }
+
+  // Aggregate grand totals ignoring currency conversion (for simple counts)
+  // Or just return the array and let frontend handle currency display
+  const totalInvoices = stats.reduce((sum, s) => sum + s.totalInvoices, 0);
   
-  return stats[0] || {
-    totalInvoices: 0,
-    totalRevenue: 0,
-    paidAmount: 0,
-    pendingAmount: 0,
-    draftCount: 0,
-    sentCount: 0,
+  // Default to NGN if present, otherwise just return the first one or 0 for main stats
+  const ngnStats = stats.find(s => s._id === 'NGN') || stats[0];
+
+  return {
+    totalInvoices,
+    totalRevenue: ngnStats.totalRevenue,
+    paidAmount: ngnStats.paidAmount,
+    pendingAmount: ngnStats.pendingAmount,
+    currency: ngnStats._id || 'NGN',
+    byCurrency: stats.map(s => ({
+      currency: s._id || 'NGN',
+      totalInvoices: s.totalInvoices,
+      totalRevenue: s.totalRevenue,
+      paidAmount: s.paidAmount,
+      pendingAmount: s.pendingAmount
+    }))
   };
 };
-
-// ============================================
-// INDEXES for faster queries
-// ============================================
-invoiceSchema.index({ user: 1, invoiceNumber: 1 });
-invoiceSchema.index({ user: 1, status: 1 });
-invoiceSchema.index({ user: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Invoice', invoiceSchema);

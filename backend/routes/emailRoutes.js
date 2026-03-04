@@ -1,237 +1,173 @@
 const express = require('express');
 const router = express.Router();
-const emailService = require('../services/emailService');
-const invoiceEmailService = require('../services/invoiceEmailService');
-const otpService = require('../services/otpService');
-const { protect } = require('../middleware/authMiddleware');
-const User = require('../models/User');
 const multer = require('multer');
+const { protect } = require('../middleware/authMiddleware');
+const invoiceEmailService = require('../services/invoiceEmailService');
 
-// Use memory storage - small PDFs only (keeps code minimal and avoids extra deps)
-const upload = multer({ storage: multer.memoryStorage() });
+// Configure multer for in-memory file uploads (PDF attachments)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/pdf') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF files are allowed'), false);
+    }
+  }
+});
 
-/**
- * EMAIL ROUTES
- */
+// @route   POST /api/email/test
+// @desc    Send a test email to verify credentials
+// @access  Private
+router.post('/test', protect, async (req, res) => {
+  try {
+    const { email } = req.body;
+    const targetEmail = email || req.user.email;
+    
+    const result = await invoiceEmailService.sendTestInvoiceEmail(targetEmail);
+    
+    res.status(200).json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    console.error('Email test error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to send test email', 
+      error: error.message 
+    });
+  }
+});
 
-// POST /api/email/send-invoice - Send invoice via email
-// Accepts multipart/form-data with optional `pdf` file
+// @route   POST /api/email/send-invoice
+// @desc    Send an invoice PDF via email
+// @access  Private
+// Expects FormData with fields: email, subject, invoiceData (JSON string), pdf (file)
 router.post('/send-invoice', protect, upload.single('pdf'), async (req, res) => {
   try {
-    console.log('📧 Email route hit');
-    console.log('🔐 User:', req.user?.email);
-    const { email, subject, html, invoiceNumber, clientName, amount, dueDate } = req.body;
-    
-    console.log('📋 Request body keys:', Object.keys(req.body).join(', '));
-    console.log('📎 File received:', !!req.file, req.file?.size, 'bytes');
+    console.log('📧 [emailRoutes] /send-invoice hit');
+    console.log('   Body keys:', Object.keys(req.body));
+    console.log('   File present:', !!req.file);
+
+    const { email, subject, invoiceData, html } = req.body;
+
+    console.log('📧 Email data received:');
+    console.log('   email:', email);
+    console.log('   subject:', subject);
+    console.log('   html provided:', !!html);
+    console.log('   html length:', html ? html.length : 0);
+    console.log('   html preview:', html ? html.substring(0, 100) + '...' : 'none');
+    console.log('   invoiceData provided:', !!invoiceData);
 
     if (!email) {
-      console.error('❌ No email provided');
-      return res.status(400).json({ message: 'Email required' });
+      return res.status(400).json({ success: false, message: 'Recipient email is required' });
     }
 
-    // If HTML not provided, generate a simple template
-    let htmlContent = html || generateSimpleInvoiceHTML({
-      invoiceNumber,
-      clientName,
-      amount,
-      dueDate
-    });
-
-    // If a file was uploaded, use its buffer
-    let pdfBuffer = null;
-    if (req.file && req.file.buffer) {
-      pdfBuffer = req.file.buffer;
-      console.log('✅ Using PDF from file upload:', pdfBuffer.length, 'bytes');
-    } else if (req.body.pdf) {
-      // If client sent base64 in body
-      const maybeBase64 = req.body.pdf;
-      if (typeof maybeBase64 === 'string') {
-        try {
-          pdfBuffer = Buffer.from(maybeBase64, 'base64');
-          console.log('✅ Using PDF from base64:', pdfBuffer.length, 'bytes');
-        } catch (err) {
-          console.warn('⚠️ Failed to decode base64 PDF:', err.message);
-          pdfBuffer = null;
-        }
+    // Parse invoice data if sent as JSON string
+    let parsedInvoiceData = null;
+    if (invoiceData) {
+      try {
+        parsedInvoiceData = JSON.parse(invoiceData);
+      } catch (e) {
+        console.warn('⚠️ Could not parse invoiceData:', e.message);
       }
     }
 
-    console.log('📤 Sending email to:', email);
-    console.log('📑 Subject:', subject);
-    console.log('📎 Attachment:', pdfBuffer ? `${pdfBuffer.length} bytes` : 'none');
+    // Build HTML content - use provided html, or generate from invoiceData, or minimal fallback
+    let htmlContent = html || '';
+    if (!htmlContent && parsedInvoiceData) {
+      // Generate a professional HTML email from invoice data
+      const inv = parsedInvoiceData;
+      const items = (inv.items || []).map(item => {
+        const name = item.description || item.name || 'Item';
+        const qty = item.quantity || 1;
+        const rate = item.rate || item.price || 0;
+        const lineTotal = qty * rate;
+        return `<tr>
+          <td style="padding: 10px; border-bottom: 1px solid #eee;">${name}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">${qty}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">${inv.currency || 'NGN'} ${rate.toLocaleString()}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">${inv.currency || 'NGN'} ${lineTotal.toLocaleString()}</td>
+        </tr>`;
+      }).join('');
 
-    // Use dedicated invoice email service for sending invoices
+      htmlContent = `
+        <!DOCTYPE html>
+        <html>
+          <body style="font-family: Inter, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1f2937; background: #F8FAFC; padding: 16px;">
+            <div style="max-width:650px;margin:0 auto;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 6px 18px rgba(15,23,42,0.06);">
+              <div style="background:#0F172A;color:#fff;padding:18px 22px;font-weight:700;">${inv.senderName || inv.company?.name || inv.businessName || 'Invoice'}</div>
+              <div style="padding:20px;">
+                <h2 style="margin:0 0 8px 0;color:#0F172A;">Invoice ${inv.invoiceNumber || ''}</h2>
+                <p style="color:#334155;margin:0 0 12px 0;">Dear ${inv.clientName || inv.client?.name || inv.toName || 'Customer'},</p>
+                <p style="color:#334155;margin:0 0 12px 0;">Please find your invoice attached. Below is a summary.</p>
+
+                <table style="width:100%;border-collapse:collapse;margin:14px 0;">
+                  <thead>
+                    <tr style="background:#F8FAFC;">
+                      <th style="padding:10px;text-align:left;border-bottom:2px solid #e5e7eb;">Description</th>
+                      <th style="padding:10px;text-align:center;border-bottom:2px solid #e5e7eb;">Qty</th>
+                      <th style="padding:10px;text-align:right;border-bottom:2px solid #e5e7eb;">Rate</th>
+                      <th style="padding:10px;text-align:right;border-bottom:2px solid #e5e7eb;">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${items}
+                  </tbody>
+                </table>
+
+                <div style="text-align:right;margin-top:8px;">
+                  <p style="margin:4px 0;">Subtotal: <strong>${inv.currency || 'NGN'} ${(inv.subtotal || 0).toLocaleString()}</strong></p>
+                  ${inv.taxRate ? `<p style="margin:4px 0;">Tax (${inv.taxRate}%): ${inv.currency || 'NGN'} ${(inv.tax || inv.taxAmount || 0).toLocaleString()}</p>` : ''}
+                  ${inv.discount ? `<p style="margin:4px 0;color:#ef4444;">Discount: -${inv.currency || 'NGN'} ${(inv.discount || 0).toLocaleString()}</p>` : ''}
+                  <h3 style="color:#0F172A;margin:8px 0;">Total: ${inv.currency || 'NGN'} ${(inv.total || 0).toLocaleString()}</h3>
+                </div>
+
+                ${inv.dueDate ? `<p style="margin-top:12px;"><strong>Due Date:</strong> ${new Date(inv.dueDate).toLocaleDateString()}</p>` : ''}
+                ${inv.notes ? `<p style="color:#666;border-top:1px solid #eee;padding-top:10px;margin-top:12px;"><em>Notes: ${inv.notes}</em></p>` : ''}
+
+                <p style="margin-top:18px;color:#334155;">If you have questions, reply to this email and we'll help.</p>
+              </div>
+              <div style="background:#F8FAFC;padding:14px;text-align:center;color:#64748b;font-size:12px;">Sent via InvoicePro</div>
+            </div>
+          </body>
+        </html>
+      `;
+    }
+
+    if (!htmlContent) {
+      htmlContent = `<p>Please find your invoice attached.</p>`;
+    }
+
+    // Get PDF buffer from multer file upload
+    const pdfBuffer = req.file ? req.file.buffer : null;
+
+    console.log('📧 Sending invoice email:');
+    console.log('   To:', email);
+    console.log('   Subject:', subject);
+    console.log('   PDF size:', pdfBuffer ? `${pdfBuffer.length} bytes` : 'No PDF');
+
     const result = await invoiceEmailService.sendInvoiceEmail({
       email,
-      subject: subject || `Invoice ${invoiceNumber || 'Receipt'}`,
+      subject: subject || 'Your Invoice',
       htmlContent,
       pdfBuffer,
-      invoiceNumber: invoiceNumber || 'INV'
-    });
-
-    console.log('✅ Email sent successfully:', result.messageId);
-    res.status(200).json({
-      success: true,
-      message: 'Invoice sent successfully',
-      messageId: result.messageId
-    });
-  } catch (error) {
-    console.error('❌ Send invoice error:', error.message);
-    console.error('Stack:', error.stack);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to send invoice',
-      error: error.message
-    });
-  }
-});
-
-// Helper function to generate simple HTML for invoice
-const generateSimpleInvoiceHTML = ({ invoiceNumber, clientName, amount, dueDate }) => {
-  return `
-    <html>
-    <body style="font-family: Arial, sans-serif; color: #333;">
-      <h2>Invoice ${invoiceNumber || 'Receipt'}</h2>
-      <p>Dear ${clientName || 'Valued Customer'},</p>
-      <p>Please find your invoice details below:</p>
-      <table style="width:100%; border-collapse: collapse; margin: 20px 0;">
-        <tr style="background-color: #f0f0f0;">
-          <td style="padding: 10px; border: 1px solid #ddd;">Invoice Number</td>
-          <td style="padding: 10px; border: 1px solid #ddd;">${invoiceNumber || 'N/A'}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px; border: 1px solid #ddd;">Amount Due</td>
-          <td style="padding: 10px; border: 1px solid #ddd;">₦${amount || 0}</td>
-        </tr>
-        <tr style="background-color: #f0f0f0;">
-          <td style="padding: 10px; border: 1px solid #ddd;">Due Date</td>
-          <td style="padding: 10px; border: 1px solid #ddd;">${dueDate ? new Date(dueDate).toLocaleDateString() : 'N/A'}</td>
-        </tr>
-      </table>
-      <p>Thank you for your business!</p>
-      <p>Best regards,<br>Your Company</p>
-    </body>
-    </html>
-  `;
-};
-
-// POST /api/email/send-otp - Send OTP via email (uses OTP service)
-router.post('/send-otp', protect, async (req, res) => {
-  try {
-    const { email, otp, purpose = 'signup' } = req.body;
-    const userId = req.user._id || req.user.uid;
-
-    if (!email || !otp) {
-      return res.status(400).json({ message: 'Email and OTP required' });
-    }
-
-    // Get user name
-    const user = await User.findById(userId);
-    const userName = user?.name || user?.displayName || 'User';
-    const logoUrl = user?.businessProfile?.logoUrl || '';
-
-    // Use OTP service for sending OTP emails
-    const result = await otpService.sendOTPEmail(email, otp, purpose, logoUrl);
-
-    if (!result.success) {
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to send OTP email',
-        error: result.error
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: 'OTP sent successfully',
-      messageId: result.messageId
-    });
-  } catch (error) {
-    console.error('Send OTP error:', error);
-    res.status(500).json({
-      message: 'Failed to send OTP',
-      error: error.message
-    });
-  }
-});
-
-// POST /api/email/send-welcome - Send welcome email
-router.post('/send-welcome', protect, async (req, res) => {
-  try {
-    const userId = req.user.uid;
-    const user = await User.findById(userId);
-
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    const result = await emailService.sendWelcomeEmail({
-      email: user.email,
-      userName: user.displayName
+      invoiceNumber: parsedInvoiceData?.invoiceNumber || 'invoice'
     });
 
     res.status(200).json({
       success: true,
-      message: 'Welcome email sent',
-      messageId: result.messageId
+      message: 'Invoice email sent successfully',
+      data: result
     });
   } catch (error) {
-    res.status(500).json({
-      message: 'Failed to send welcome email',
-      error: error.message
-    });
-  }
-});
-
-// POST /api/email/send-payment-receipt - Send payment receipt
-router.post('/send-payment-receipt', protect, async (req, res) => {
-  try {
-    const { plan, amount, reference } = req.body;
-    const userId = req.user.uid;
-    const user = await User.findById(userId);
-
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    const result = await emailService.sendPaymentReceiptEmail({
-      email: user.email,
-      plan,
-      amount,
-      reference,
-      userName: user.displayName
-    });
-
-    res.status(200).json({
-      success: true,
-      message: 'Payment receipt sent',
-      messageId: result.messageId
-    });
-  } catch (error) {
-    res.status(500).json({
-      message: 'Failed to send payment receipt',
-      error: error.message
-    });
-  }
-});
-
-// POST /api/email/test - Test email configuration (admin only)
-router.post('/test', async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({ message: 'Email required' });
-    }
-
-    const result = await emailService.sendTestEmail(email);
-
-    res.status(200).json(result);
-  } catch (error) {
-    res.status(500).json({
-      message: 'Email test failed',
-      error: error.message
+    console.error('❌ Send invoice email error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to send invoice email', 
+      error: error.message 
     });
   }
 });

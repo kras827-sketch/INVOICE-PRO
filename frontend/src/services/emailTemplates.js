@@ -1,496 +1,310 @@
 // src/services/emailTemplates.js
-// Professional HTML email templates for invoices and OTP
+import { formatCurrency as _formatCurrency } from '../utils/currencyUtils';
 
 /**
- * Generate beautiful invoice email HTML
- * Professional design that competes with Stripe/Paystack
+ * Generate premium invoice email HTML
+ * Brand: Navy #0F172A, Emerald #059669, Slate #334155, White #F8FAFC
  */
 export const generateInvoiceEmailHTML = (invoiceData, businessLogo) => {
   const formatCurrency = (amount) => {
-    return '₦' + amount.toLocaleString('en-NG', { minimumFractionDigits: 2 });
+    return _formatCurrency(amount, invoiceData.currency || 'NGN');
   };
 
   const formatDate = (date) => {
     return new Date(date).toLocaleDateString('en-NG', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
+      year: 'numeric', month: 'long', day: 'numeric'
     });
   };
 
-  const subtotal = invoiceData.items.reduce((sum, item) => 
+  const subtotal = invoiceData.items.reduce((sum, item) =>
     sum + (item.quantity * item.price), 0
   );
-  
   const tax = (subtotal * invoiceData.taxRate) / 100;
   const discount = invoiceData.discount || 0;
   const total = subtotal + tax - discount;
 
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>
-            body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-                background-color: #f5f7fa;
-                margin: 0;
-                padding: 20px;
-                color: #333;
-            }
-            .email-container {
-                background: #ffffff;
-                max-width: 600px;
-                margin: 0 auto;
-                border-radius: 8px;
-                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-                overflow: hidden;
-            }
-            .header {
-                background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
-                color: white;
-                padding: 40px;
-                text-align: center;
-            }
-            .header h1 {
-                margin: 0 0 10px 0;
-                font-size: 28px;
-                font-weight: 700;
-            }
-            .logo {
-                height: 50px;
-                margin-bottom: 15px;
-            }
-            .content {
-                padding: 40px;
-            }
-            .greeting {
-                font-size: 16px;
-                margin-bottom: 20px;
-                line-height: 1.6;
-            }
-            .invoice-details {
-                background: #f8f9fa;
-                border-left: 4px solid #2563eb;
-                padding: 20px;
-                margin: 30px 0;
-                border-radius: 4px;
-            }
-            .invoice-details-grid {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 20px;
-                margin-bottom: 15px;
-            }
-            .detail-item {
-                font-size: 14px;
-            }
-            .detail-label {
-                color: #666;
-                font-size: 12px;
-                text-transform: uppercase;
-                margin-bottom: 4px;
-            }
-            .detail-value {
-                font-weight: 600;
-                color: #333;
-            }
-            .table {
-                width: 100%;
-                border-collapse: collapse;
-                margin: 30px 0;
-            }
-            .table thead {
-                background: #f8f9fa;
-                border-bottom: 2px solid #e2e8f0;
-            }
-            .table th {
-                padding: 12px;
-                text-align: left;
-                font-weight: 600;
-                color: #333;
-                font-size: 13px;
-            }
-            .table td {
-                padding: 12px;
-                border-bottom: 1px solid #e2e8f0;
-                font-size: 14px;
-            }
-            .table tr:hover {
-                background: #f8f9fa;
-            }
-            .totals {
-                margin-top: 30px;
-                display: flex;
-                justify-content: flex-end;
-            }
-            .totals-table {
-                width: 300px;
-            }
-            .total-row {
-                display: grid;
-                grid-template-columns: 1fr auto;
-                gap: 20px;
-                padding: 10px 0;
-                border-bottom: 1px solid #e2e8f0;
-                font-size: 14px;
-            }
-            .total-row.grand {
-                background: #2563eb;
-                color: white;
-                padding: 15px;
-                margin-top: 10px;
-                font-weight: 700;
-                font-size: 16px;
-                border: none;
-                border-radius: 4px;
-            }
-            .total-row.grand border-bottom {
-                border-bottom: none;
-            }
-            .cta-button {
-                display: inline-block;
-                background: #2563eb;
-                color: white;
-                padding: 14px 32px;
-                text-decoration: none;
-                border-radius: 4px;
-                font-weight: 600;
-                margin: 30px 0;
-                text-align: center;
-                transition: background 0.3s;
-            }
-            .cta-button:hover {
-                background: #1e40af;
-            }
-            .footer {
-                background: #f8f9fa;
-                padding: 30px;
-                text-align: center;
-                border-top: 1px solid #e2e8f0;
-                font-size: 12px;
-                color: #666;
-            }
-            .footer-link {
-                color: #2563eb;
-                text-decoration: none;
-            }
-            .from-to-section {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 30px;
-                margin: 30px 0;
-                font-size: 13px;
-            }
-            .from-to-item h3 {
-                margin: 0 0 8px 0;
-                color: #2563eb;
-                font-size: 12px;
-                text-transform: uppercase;
-                font-weight: 600;
-            }
-            .from-to-item p {
-                margin: 4px 0;
-                color: #666;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="email-container">
-            <!-- HEADER -->
-            <div class="header">
-                ${businessLogo ? `<img src="${businessLogo}" alt="Logo" class="logo">` : ''}
-                <h1>Invoice</h1>
-                <p style="margin: 0; font-size: 14px; opacity: 0.9;">Invoice #${invoiceData.invoiceNumber}</p>
-            </div>
+  const logoBlock = businessLogo
+    ? `<img src="${businessLogo}" alt="Logo" style="height:44px;margin-bottom:12px;display:block;margin-left:auto;margin-right:auto;" />`
+    : `<div style="font-family:'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size:32px; font-weight:800; letter-spacing:-1px; text-align:center; margin-bottom:0px;">
+        <span style="color:#ffffff;">Invoice</span><span style="color:#10b981;">Pro</span>
+      </div>`;
 
-            <!-- CONTENT -->
-            <div class="content">
-                <div class="greeting">
-                    <p>Hi <strong>${invoiceData.clientName}</strong>,</p>
-                    <p>We've created an invoice for you. Please review the details below.</p>
-                </div>
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Invoice ${invoiceData.invoiceNumber}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f0fdf4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif;-webkit-font-smoothing:antialiased;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
 
-                <!-- INVOICE DETAILS -->
-                <div class="invoice-details">
-                    <div class="invoice-details-grid">
-                        <div class="detail-item">
-                            <div class="detail-label">Invoice Number</div>
-                            <div class="detail-value">${invoiceData.invoiceNumber}</div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">Invoice Date</div>
-                            <div class="detail-value">${formatDate(invoiceData.invoiceDate)}</div>
-                        </div>
-                        ${invoiceData.dueDate ? `
-                        <div class="detail-item">
-                            <div class="detail-label">Due Date</div>
-                            <div class="detail-value">${formatDate(invoiceData.dueDate)}</div>
-                        </div>
-                        ` : ''}
-                        <div class="detail-item">
-                            <div class="detail-label">Total Amount</div>
-                            <div class="detail-value" style="color: #2563eb; font-size: 18px;">
-                                ${formatCurrency(total)}
-                            </div>
-                        </div>
-                    </div>
-                </div>
+        <!-- Main Card -->
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
 
-                <!-- FROM & TO -->
-                <div class="from-to-section">
-                    <div class="from-to-item">
-                        <h3>From</h3>
-                        <p><strong>${invoiceData.businessName}</strong></p>
-                        <p>${invoiceData.businessAddress}</p>
-                        <p>${invoiceData.businessEmail}</p>
-                    </div>
-                    <div class="from-to-item">
-                        <h3>Bill To</h3>
-                        <p><strong>${invoiceData.clientName}</strong></p>
-                        <p>${invoiceData.clientAddress}</p>
-                        ${invoiceData.clientEmail ? `<p>${invoiceData.clientEmail}</p>` : ''}
-                    </div>
-                </div>
+          <!-- Header -->
+          <tr>
+            <td style="background:#0F172A;padding:32px 40px;text-align:center;">
+              ${logoBlock}
+            </td>
+          </tr>
 
-                <!-- ITEMS TABLE -->
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Description</th>
-                            <th style="text-align: center;">Qty</th>
-                            <th style="text-align: right;">Rate</th>
-                            <th style="text-align: right;">Amount</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${invoiceData.items.map(item => `
-                        <tr>
-                            <td>${item.name}</td>
-                            <td style="text-align: center;">${item.quantity}</td>
-                            <td style="text-align: right;">${formatCurrency(item.price)}</td>
-                            <td style="text-align: right;"><strong>${formatCurrency(item.quantity * item.price)}</strong></td>
-                        </tr>
-                        `).join('')}
-                    </tbody>
+          <!-- Emerald Accent Bar -->
+          <tr><td style="height:4px;background:linear-gradient(90deg,#16A34A,#22c55e,#4ade80);"></td></tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="background:#ffffff;padding:36px 40px;">
+
+              <!-- Greeting -->
+              <p style="margin:0 0 20px;font-size:16px;color:#334155;line-height:1.6;">
+                Hi <strong style="color:#0F172A;">${invoiceData.clientName}</strong>,
+              </p>
+              <p style="margin:0 0 28px;font-size:15px;color:#475569;line-height:1.6;">
+                Please find your invoice details below. A PDF copy is attached for your records.
+              </p>
+
+              <!-- Amount Due Card -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+                <tr>
+                  <td style="background:#f0fdf4;border:2px solid #059669;border-radius:12px;padding:28px;text-align:center;">
+                    <p style="margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#059669;font-weight:700;">Amount Due</p>
+                    <p style="margin:0;font-size:36px;font-weight:800;color:#0F172A;letter-spacing:-1px;">${formatCurrency(total)}</p>
+                    ${invoiceData.dueDate ? `<p style="margin:10px 0 0;font-size:13px;color:#64748b;">Due by <strong>${formatDate(invoiceData.dueDate)}</strong></p>` : ''}
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Invoice Details Grid -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+                <tr style="background:#f8fafc;">
+                  <td style="padding:16px 20px;border-bottom:1px solid #e2e8f0;width:50%;">
+                    <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;font-weight:600;">Invoice Number</p>
+                    <p style="margin:0;font-size:14px;font-weight:600;color:#0F172A;">${invoiceData.invoiceNumber}</p>
+                  </td>
+                  <td style="padding:16px 20px;border-bottom:1px solid #e2e8f0;">
+                    <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;font-weight:600;">Invoice Date</p>
+                    <p style="margin:0;font-size:14px;font-weight:600;color:#0F172A;">${formatDate(invoiceData.invoiceDate)}</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:16px 20px;">
+                    <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;font-weight:600;">From</p>
+                    <p style="margin:0;font-size:14px;font-weight:600;color:#0F172A;">${invoiceData.businessName}</p>
+                    <p style="margin:2px 0 0;font-size:13px;color:#64748b;">${invoiceData.businessEmail || ''}</p>
+                  </td>
+                  <td style="padding:16px 20px;">
+                    <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;font-weight:600;">Bill To</p>
+                    <p style="margin:0;font-size:14px;font-weight:600;color:#0F172A;">${invoiceData.clientName}</p>
+                    <p style="margin:2px 0 0;font-size:13px;color:#64748b;">${invoiceData.clientEmail || ''}</p>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Items Table -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+                <tr style="background:#0F172A;">
+                  <td style="padding:12px 16px;font-size:12px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:0.5px;">Item</td>
+                  <td style="padding:12px 16px;font-size:12px;font-weight:700;color:#ffffff;text-align:center;text-transform:uppercase;letter-spacing:0.5px;">Qty</td>
+                  <td style="padding:12px 16px;font-size:12px;font-weight:700;color:#ffffff;text-align:right;text-transform:uppercase;letter-spacing:0.5px;">Rate</td>
+                  <td style="padding:12px 16px;font-size:12px;font-weight:700;color:#ffffff;text-align:right;text-transform:uppercase;letter-spacing:0.5px;">Amount</td>
+                </tr>
+                ${invoiceData.items.map((item, idx) => `
+                <tr style="background:${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+                  <td style="padding:14px 16px;font-size:14px;color:#0F172A;font-weight:500;border-bottom:1px solid #f1f5f9;">${item.name}${item.description ? `<br><span style="font-size:12px;color:#94a3b8;font-weight:400;">${item.description}</span>` : ''}</td>
+                  <td style="padding:14px 16px;font-size:14px;color:#334155;text-align:center;border-bottom:1px solid #f1f5f9;">${item.quantity}</td>
+                  <td style="padding:14px 16px;font-size:14px;color:#334155;text-align:right;border-bottom:1px solid #f1f5f9;">${formatCurrency(item.price)}</td>
+                  <td style="padding:14px 16px;font-size:14px;color:#0F172A;text-align:right;font-weight:600;border-bottom:1px solid #f1f5f9;">${formatCurrency(item.quantity * item.price)}</td>
+                </tr>
+                `).join('')}
+              </table>
+
+              <!-- Totals -->
+              <table role="presentation" cellpadding="0" cellspacing="0" style="margin-left:auto;width:260px;margin-bottom:28px;">
+                <tr>
+                  <td style="padding:8px 0;font-size:14px;color:#64748b;">Subtotal</td>
+                  <td style="padding:8px 0;font-size:14px;color:#0F172A;text-align:right;font-weight:500;">${formatCurrency(subtotal)}</td>
+                </tr>
+                ${invoiceData.taxRate > 0 ? `
+                <tr>
+                  <td style="padding:8px 0;font-size:14px;color:#64748b;">Tax (${invoiceData.taxRate}%)</td>
+                  <td style="padding:8px 0;font-size:14px;color:#0F172A;text-align:right;font-weight:500;">${formatCurrency(tax)}</td>
+                </tr>` : ''}
+                ${discount > 0 ? `
+                <tr>
+                  <td style="padding:8px 0;font-size:14px;color:#64748b;">Discount</td>
+                  <td style="padding:8px 0;font-size:14px;color:#ef4444;text-align:right;font-weight:500;">-${formatCurrency(discount)}</td>
+                </tr>` : ''}
+                <tr>
+                  <td colspan="2" style="padding:0;"><div style="height:1px;background:#e2e8f0;margin:4px 0;"></div></td>
+                </tr>
+                <tr>
+                  <td style="padding:12px 16px;font-size:16px;color:#ffffff;font-weight:700;background:#059669;border-radius:8px 0 0 8px;">TOTAL</td>
+                  <td style="padding:12px 16px;font-size:16px;color:#ffffff;font-weight:700;background:#059669;text-align:right;border-radius:0 8px 8px 0;">${formatCurrency(total)}</td>
+                </tr>
+              </table>
+
+              <!-- CTA Label -->
+              <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:0 auto 28px;">
+                <tr>
+                  <td style="border-radius:10px;background:#0F172A;padding:14px 36px;font-size:15px;font-weight:600;color:#ffffff;text-align:center;">
+                    View &amp; Pay &darr;
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Payment Details -->
+              ${invoiceData.bankDetails && invoiceData.bankDetails.bankName ? `
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;padding:20px;border-radius:10px;margin-bottom:20px;">
+                <p style="margin:0 0 12px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;color:#0F172A;font-weight:700;">Payment Details</p>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="padding:4px 0;font-size:13px;color:#64748b;width:120px;">Bank Name:</td>
+                    <td style="padding:4px 0;font-size:14px;color:#0F172A;font-weight:600;">${invoiceData.bankDetails.bankName}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:4px 0;font-size:13px;color:#64748b;">Account Name:</td>
+                    <td style="padding:4px 0;font-size:14px;color:#0F172A;font-weight:600;">${invoiceData.bankDetails.accountName}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:4px 0;font-size:13px;color:#64748b;">Account No:</td>
+                    <td style="padding:4px 0;font-size:14px;color:#0F172A;font-weight:600;">${invoiceData.bankDetails.accountNumber}</td>
+                  </tr>
                 </table>
+              </div>` : ''}
 
-                <!-- TOTALS -->
-                <div class="totals">
-                    <div class="totals-table">
-                        <div class="total-row">
-                            <span>Subtotal</span>
-                            <span>${formatCurrency(subtotal)}</span>
-                        </div>
-                        ${invoiceData.taxRate > 0 ? `
-                        <div class="total-row">
-                            <span>Tax (${invoiceData.taxRate}%)</span>
-                            <span>${formatCurrency(tax)}</span>
-                        </div>
-                        ` : ''}
-                        ${discount > 0 ? `
-                        <div class="total-row">
-                            <span>Discount</span>
-                            <span style="color: #ef4444;">-${formatCurrency(discount)}</span>
-                        </div>
-                        ` : ''}
-                        <div class="total-row grand">
-                            <span>TOTAL</span>
-                            <span>${formatCurrency(total)}</span>
-                        </div>
-                    </div>
-                </div>
+              <!-- Notes -->
+              ${invoiceData.notes ? `
+              <div style="background:#f0fdf4;border-left:4px solid #059669;padding:16px 20px;border-radius:0 8px 8px 0;margin-bottom:16px;">
+                <p style="margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#059669;font-weight:700;">Notes</p>
+                <p style="margin:0;font-size:13px;line-height:1.5;color:#334155;">${invoiceData.notes}</p>
+              </div>` : ''}
 
-                <!-- CTA BUTTON -->
-                <center>
-                    <a href="#" class="cta-button">View Invoice & Pay</a>
-                </center>
+              ${invoiceData.terms ? `
+              <div style="background:#f8fafc;border-left:4px solid #94a3b8;padding:16px 20px;border-radius:0 8px 8px 0;margin-bottom:16px;">
+                <p style="margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;font-weight:700;">Payment Terms</p>
+                <p style="margin:0;font-size:13px;line-height:1.5;color:#334155;">${invoiceData.terms}</p>
+              </div>` : ''}
 
-                <!-- NOTES -->
-                ${invoiceData.notes ? `
-                <div style="background: #f0f4ff; padding: 15px; border-radius: 4px; margin-top: 20px;">
-                    <p style="margin: 0 0 8px 0; color: #2563eb; font-weight: 600; font-size: 12px; text-transform: uppercase;">
-                        Notes
-                    </p>
-                    <p style="margin: 0; color: #666; font-size: 13px; white-space: pre-wrap;">
-                        ${invoiceData.notes}
-                    </p>
-                </div>
-                ` : ''}
+            </td>
+          </tr>
 
-                ${invoiceData.terms ? `
-                <div style="background: #f0f4ff; padding: 15px; border-radius: 4px; margin-top: 15px;">
-                    <p style="margin: 0 0 8px 0; color: #2563eb; font-weight: 600; font-size: 12px; text-transform: uppercase;">
-                        Payment Terms
-                    </p>
-                    <p style="margin: 0; color: #666; font-size: 13px; white-space: pre-wrap;">
-                        ${invoiceData.terms}
-                    </p>
-                </div>
-                ` : ''}
-            </div>
+          <!-- Footer -->
+          <tr>
+            <td style="background:#0F172A;padding:28px 40px;text-align:center;">
+              <p style="margin:0 0 6px;font-size:14px;font-weight:600;color:#ffffff;">${invoiceData.businessName}</p>
+              <p style="margin:0 0 16px;font-size:12px;color:#94a3b8;">${invoiceData.businessEmail || ''}${invoiceData.businessPhone ? ` &middot; ${invoiceData.businessPhone}` : ''}</p>
+              <div style="height:1px;background:#1e293b;margin:0 0 16px;"></div>
+              <p style="margin:0;font-size:11px;color:#64748b;">Powered by <strong style="color:#059669;">InvoicePro</strong> &middot; &copy; ${new Date().getFullYear()}</p>
+            </td>
+          </tr>
 
-            <!-- FOOTER -->
-            <div class="footer">
-                <p style="margin: 0 0 10px 0;">
-                    <strong>${invoiceData.businessName}</strong>
-                </p>
-                <p style="margin: 0;">
-                    ${invoiceData.businessEmail} | ${invoiceData.businessPhone || 'No phone provided'}
-                </p>
-                <p style="margin: 15px 0 0 0; color: #999;">
-                    This is an automated email from InvoicePro. Please do not reply to this email.
-                </p>
-            </div>
-        </div>
-    </body>
-    </html>
-  `;
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
 };
 
 /**
  * Generate branded OTP email HTML
  */
 export const generateOTPEmailHTML = (otpCode, businessName = 'InvoicePro') => {
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>
-            body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
-                margin: 0;
-                padding: 20px;
-                color: #333;
-            }
-            .email-container {
-                background: white;
-                max-width: 500px;
-                margin: 0 auto;
-                border-radius: 12px;
-                box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
-                overflow: hidden;
-            }
-            .header {
-                background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
-                color: white;
-                padding: 40px;
-                text-align: center;
-            }
-            .header h1 {
-                margin: 0;
-                font-size: 24px;
-                font-weight: 700;
-            }
-            .content {
-                padding: 40px;
-                text-align: center;
-            }
-            .greeting {
-                font-size: 16px;
-                margin-bottom: 30px;
-                color: #333;
-            }
-            .otp-card {
-                background: #f0f4ff;
-                border: 2px dashed #2563eb;
-                padding: 30px;
-                border-radius: 8px;
-                margin: 30px 0;
-            }
-            .otp-label {
-                font-size: 12px;
-                color: #666;
-                text-transform: uppercase;
-                letter-spacing: 1px;
-                margin-bottom: 10px;
-            }
-            .otp-code {
-                font-size: 48px;
-                font-weight: 700;
-                color: #2563eb;
-                letter-spacing: 8px;
-                font-family: 'Courier New', monospace;
-                margin: 0;
-            }
-            .expiry {
-                font-size: 13px;
-                color: #ef4444;
-                margin-top: 15px;
-                font-weight: 600;
-            }
-            .info {
-                background: #fff3cd;
-                border-left: 4px solid #ffc107;
-                padding: 15px;
-                margin: 30px 0;
-                border-radius: 4px;
-                font-size: 13px;
-                color: #856404;
-            }
-            .footer {
-                background: #f8f9fa;
-                padding: 20px;
-                text-align: center;
-                border-top: 1px solid #e2e8f0;
-                font-size: 12px;
-                color: #666;
-            }
-            .footer-link {
-                color: #2563eb;
-                text-decoration: none;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="email-container">
-            <!-- HEADER -->
-            <div class="header">
-                <h1>🔐 ${businessName}</h1>
-                <p style="margin: 8px 0 0 0; opacity: 0.9;">Secure Verification</p>
-            </div>
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Verification Code</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f0fdf4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif;-webkit-font-smoothing:antialiased;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
 
-            <!-- CONTENT -->
-            <div class="content">
-                <div class="greeting">
-                    <p>Your One-Time Password (OTP) is ready to use.</p>
+        <!-- Main Card -->
+        <table role="presentation" width="500" cellpadding="0" cellspacing="0" style="max-width:500px;width:100%;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+
+          <!-- Header -->
+          <tr>
+            <td style="background:#0F172A;padding:36px 40px;text-align:center;">
+              <div style="display:flex;justify-content:center;margin-bottom:16px;">
+                <div style="width:48px;height:48px;background:#16A34A;border-radius:12px;display:flex;align-items:center;justify-content:center;">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:auto;">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                    <polyline points="10 9 9 9 8 9"></polyline>
+                  </svg>
                 </div>
+              </div>
+            </td>
+          </tr>
 
-                <!-- OTP CARD -->
-                <div class="otp-card">
-                    <div class="otp-label">Your Verification Code</div>
-                    <p class="otp-code">${otpCode}</p>
-                    <div class="expiry">⏱️ Valid for 5 minutes only</div>
-                </div>
+          <!-- Emerald Accent Bar -->
+          <tr><td style="height:4px;background:linear-gradient(90deg,#16A34A,#22c55e,#4ade80);"></td></tr>
 
-                <!-- INFO -->
-                <div class="info">
-                    <strong>🔒 Security Notice:</strong> Never share this code with anyone. ${businessName} staff will never ask for your OTP.
-                </div>
+          <!-- Body -->
+          <tr>
+            <td style="background:#ffffff;padding:40px;">
 
-                <p style="color: #666; font-size: 14px;">
-                    This is a single-use code. If you didn't request this, please ignore this email.
-                </p>
-            </div>
+              <p style="margin:0 0 24px;font-size:16px;color:#334155;text-align:center;line-height:1.5;">
+                Your one-time verification code is ready.
+              </p>
 
-            <!-- FOOTER -->
-            <div class="footer">
-                <p style="margin: 0 0 8px 0;">
-                    © ${new Date().getFullYear()} ${businessName}. All rights reserved.
-                </p>
-                <p style="margin: 0; color: #999;">
-                    This is an automated email. Please do not reply.
-                </p>
-            </div>
-        </div>
-    </body>
-    </html>
-  `;
+              <!-- OTP Card -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+                <tr>
+                  <td style="background:#f0fdf4;border:2px solid #059669;border-radius:12px;padding:32px;text-align:center;">
+                    <p style="margin:0 0 12px;font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:#059669;font-weight:700;">Your Verification Code</p>
+                    <div style="display:inline-block;background:#0F172A;padding:14px 28px;border-radius:10px;">
+                      <span style="font-size:36px;font-weight:800;color:#ffffff;letter-spacing:8px;font-family:'Courier New',monospace;">${otpCode}</span>
+                    </div>
+                    <p style="margin:16px 0 0;font-size:13px;color:#ef4444;font-weight:600;">&#9201; Valid for 5 minutes only</p>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Security Notice -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+                <tr>
+                  <td style="background:#fefce8;border:1px solid #fde68a;border-radius:10px;padding:16px 20px;">
+                    <p style="margin:0;font-size:13px;color:#92400e;line-height:1.5;">
+                      <strong>&#128274; Security Notice:</strong> Never share this code with anyone. ${businessName} staff will never ask for your OTP.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:0;font-size:14px;color:#64748b;text-align:center;line-height:1.5;">
+                If you didn't request this code, you can safely ignore this email.
+              </p>
+
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background:#0F172A;padding:24px 40px;text-align:center;">
+              <p style="margin:0 0 8px;font-size:12px;color:#94a3b8;">
+                &copy; ${new Date().getFullYear()} ${businessName}. All rights reserved.
+              </p>
+              <p style="margin:0;font-size:11px;color:#64748b;">
+                Powered by <strong style="color:#059669;">InvoicePro</strong> &middot; This is an automated email.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
 };
 
 export default {

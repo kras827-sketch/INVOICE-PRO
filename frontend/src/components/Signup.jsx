@@ -105,7 +105,10 @@ const Signup = () => {
 
       // Handle specific backend errors
       if (err.response?.data?.message === 'Email already registered') {
-        setError('❌ This email is already registered. Try logging in instead.');
+        setError('❌ This email is already registered. Redirecting to login...');
+        setTimeout(() => {
+          navigate('/login', { replace: true });
+        }, 2000);
       } else if (err.response?.data?.message) {
         setError('❌ ' + err.response.data.message);
       } 
@@ -139,31 +142,46 @@ const Signup = () => {
 
     try {
       console.log('🔵 Starting Google signup...');
-      const result = await loginWithGoogle();
+      
+      // Call with safety timeout
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Google signup took too long. Please try again.')), 20000)
+      );
 
-      if (result.success) {
+      const signupPromise = loginWithGoogle();
+      const result = await Promise.race([signupPromise, timeoutPromise]);
+
+      console.log('🔵 Google signup result:', result);
+      
+      if (result && result.success) {
         // Google users are auto-verified, redirect directly to dashboard
         setSuccess('✅ Google account linked successfully!');
         setTimeout(() => {
           navigate('/dashboard', { replace: true });
         }, 1500);
       } else {
-        setError('❌ ' + (result.message || 'Google signup failed'));
+        setError('❌ ' + (result?.message || 'Google signup failed'));
       }
     } catch (err) {
       console.error('❌ Google signup error:', err);
-      setError('❌ Google signup failed. Please try again.');
+      if (err.message.includes('popup-closed')) {
+        setError('❌ Login popup was closed. Please try again.');
+      } else if (err.message.includes('timeout')) {
+        setError('❌ ' + err.message);
+      } else {
+        setError('❌ Google signup failed. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className={`min-h-screen flex items-center justify-center p-4 ${isDarkMode ? 'bg-gradient-to-br from-gray-900 via-gray-950 to-gray-900' : 'bg-gradient-to-br from-blue-50 to-purple-50'}`}>
+    <div className={`min-h-screen flex items-center justify-center p-4 ${isDarkMode ? 'bg-gray-950' : 'bg-brand-white'}`}>
       <div className="max-w-md w-full">
         {/* Header */}
         <div className="text-center mb-8">
-          <FileText className="h-10 w-10 text-blue-600 mx-auto mb-2" />
+          <FileText className="h-10 w-10 text-emerald-600 mx-auto mb-2" />
           <h1 className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>InvoicePro</h1>
           <p className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>Create your account</p>
         </div>
@@ -203,8 +221,8 @@ const Signup = () => {
                   disabled={isLoading}
                   className={`w-full pl-10 pr-4 py-3 border-2 rounded-lg transition focus:outline-none
                     ${isDarkMode
-                      ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500'
-                      : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-blue-500'
+                      ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-emerald-500'
+                      : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-emerald-500'
                     }
                   `}
                   placeholder="John Doe"
@@ -228,8 +246,8 @@ const Signup = () => {
                   disabled={isLoading}
                   className={`w-full pl-10 pr-4 py-3 border-2 rounded-lg transition focus:outline-none
                     ${isDarkMode
-                      ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500'
-                      : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-blue-500'
+                      ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-emerald-500'
+                      : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-emerald-500'
                     }
                   `}
                   placeholder="you@example.com"
@@ -254,8 +272,8 @@ const Signup = () => {
                   minLength="6"
                   className={`w-full pl-10 pr-4 py-3 border-2 rounded-lg transition focus:outline-none
                     ${isDarkMode
-                      ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500'
-                      : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-blue-500'
+                      ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-emerald-500'
+                      : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-emerald-500'
                     }
                   `}
                   placeholder="Min. 6 characters"
@@ -280,8 +298,8 @@ const Signup = () => {
                   minLength="6"
                   className={`w-full pl-10 pr-4 py-3 border-2 rounded-lg transition focus:outline-none
                     ${isDarkMode
-                      ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500'
-                      : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-blue-500'
+                      ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-emerald-500'
+                      : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-emerald-500'
                     }
                   `}
                   placeholder="Confirm password"
@@ -300,8 +318,8 @@ const Signup = () => {
                     ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
                     : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                   : isDarkMode
-                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                    ? 'bg-brand-emerald hover:bg-emerald-700 text-white'
+                    : 'bg-brand-emerald hover:bg-emerald-700 text-white'
                 }
               `}
             >
@@ -339,7 +357,7 @@ const Signup = () => {
           {/* Login Link */}
           <p className={`text-center mt-6 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
             Already have an account?{' '}
-            <Link to="/login" className="text-blue-600 hover:underline font-medium">
+            <Link to="/login" className="text-emerald-600 hover:underline font-medium">
               Sign in
             </Link>
           </p>

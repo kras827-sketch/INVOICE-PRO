@@ -184,8 +184,8 @@ const EmailOTPVerification = () => {
       <div className={`w-full max-w-md p-8 rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
         {/* Header */}
         <div className="text-center mb-6">
-          <div className="mx-auto w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center mb-4">
-            <Lock className={`w-6 h-6 ${isDarkMode ? 'text-blue-300' : 'text-blue-600'}`} />
+          <div className="mx-auto w-12 h-12 bg-emerald-100 dark:bg-emerald-900 rounded-full flex items-center justify-center mb-4">
+            <Lock className={`w-6 h-6 ${isDarkMode ? 'text-emerald-300' : 'text-emerald-600'}`} />
           </div>
           <h1 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
             Verify Your Email
@@ -227,8 +227,8 @@ const EmailOTPVerification = () => {
               disabled={isLoading}
               className={`w-full px-4 py-3 border-2 rounded-lg text-center text-lg font-mono tracking-widest transition
                 ${isDarkMode
-                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none'
-                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none'
+                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500 focus:border-emerald-500 focus:outline-none'
+                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-emerald-500 focus:outline-none'
                 }
                 ${!isLoading && otp.length === 6 ? 'border-green-500' : ''}
               `}
@@ -258,8 +258,8 @@ const EmailOTPVerification = () => {
                   ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
                   : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 : isDarkMode
-                  ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white'
               }
             `}
           >
@@ -282,8 +282,8 @@ const EmailOTPVerification = () => {
                   ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
                   : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                 : isDarkMode
-                  ? 'bg-gray-700 hover:bg-gray-600 text-blue-400'
-                  : 'bg-gray-100 hover:bg-gray-200 text-blue-600'
+                  ? 'bg-gray-700 hover:bg-gray-600 text-emerald-400'
+                  : 'bg-gray-100 hover:bg-gray-200 text-emerald-600'
               }
             `}
           >

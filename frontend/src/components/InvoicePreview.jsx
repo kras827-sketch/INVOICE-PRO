@@ -2,12 +2,14 @@
 // Beautiful invoice preview that matches the PDF output
 
 import { getTemplate } from '../data/invoiceTemplates';
-import { calculateInvoice, formatCurrency } from '../utils/invoiceCalculations';
+import { calculateInvoice } from '../utils/invoiceCalculations';
+import { formatCurrency } from '../utils/currencyUtils';
 
 const InvoicePreview = ({ 
   invoiceData, 
   template = 'modern-clean',
-  isFullPage = false 
+  isFullPage = false,
+  isDarkMode = false 
 }) => {
   const templateConfig = getTemplate(template);
   const colors = templateConfig.colors;
@@ -48,17 +50,19 @@ const InvoicePreview = ({
   };
 
   const containerClass = isFullPage 
-    ? 'w-full h-screen bg-gray-100 p-8 overflow-y-auto'
+    ? 'w-full h-screen p-8 overflow-y-auto'
     : 'w-full max-w-4xl mx-auto';
 
+  const containerBg = isFullPage ? (isDarkMode ? 'bg-gray-900' : 'bg-gradient-to-br from-blue-50 via-white to-emerald-50') : '';
+
   return (
-    <div className={containerClass}>
+    <div className={`${containerClass} ${containerBg}`}>
       <div 
-        className="bg-white rounded-lg shadow-lg overflow-hidden"
+        className={`rounded-lg shadow-2xl overflow-hidden ${isDarkMode ? 'shadow-emerald-500/10' : 'shadow-blue-500/20'}`}
         style={{
           fontFamily: templateConfig.fonts.body,
           color: colors.text,
-          backgroundColor: template === 'bold-dark' ? colors.accent : '#ffffff'
+          backgroundColor: '#ffffff'
         }}
       >
         {/* HEADER */}
@@ -190,10 +194,11 @@ const InvoicePreview = ({
             <thead>
               <tr style={{ 
                 backgroundColor: colors.primary, 
-                color: template === 'bold-dark' ? colors.accent : '#ffffff'
+                color: colors.tableHeader || (template === 'bold-dark' ? colors.accent : '#ffffff')
               }}>
+                <th style={{ padding: '12px', textAlign: 'left', fontWeight: 'bold' }}>Item</th>
                 <th style={{ padding: '12px', textAlign: 'left', fontWeight: 'bold' }}>Description</th>
-                <th style={{ padding: '12px', textAlign: 'center', fontWeight: 'bold' }}>Qty</th>
+                <th style={{ padding: '12px', textAlign: 'right', fontWeight: 'bold' }}>Qty</th>
                 <th style={{ padding: '12px', textAlign: 'right', fontWeight: 'bold' }}>Rate</th>
                 <th style={{ padding: '12px', textAlign: 'right', fontWeight: 'bold' }}>Amount</th>
               </tr>
@@ -207,17 +212,20 @@ const InvoicePreview = ({
                     backgroundColor: idx % 2 === 0 ? 'transparent' : colors.accent
                   }}
                 >
-                  <td style={{ padding: '12px', textAlign: 'left' }}>
+                  <td style={{ padding: '12px', textAlign: 'left', fontWeight: 'bold' }}>
                     {item.name}
                   </td>
-                  <td style={{ padding: '12px', textAlign: 'center' }}>
+                  <td style={{ padding: '12px', textAlign: 'left' }}>
+                    {item.description || '-'}
+                  </td>
+                  <td style={{ padding: '12px', textAlign: 'right' }}>
                     {item.quantity}
                   </td>
                   <td style={{ padding: '12px', textAlign: 'right' }}>
-                    {formatCurrency(item.price)}
+                    {formatCurrency(item.price, invoiceData.currency)}
                   </td>
                   <td style={{ padding: '12px', textAlign: 'right' }}>
-                    {formatCurrency(item.quantity * item.price)}
+                    {formatCurrency(item.quantity * item.price, invoiceData.currency)}
                   </td>
                 </tr>
               ))}
@@ -230,7 +238,7 @@ const InvoicePreview = ({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '50px', marginBottom: '10px' }}>
                 <div style={{ fontSize: '14px', textAlign: 'right' }}>Subtotal:</div>
                 <div style={{ fontSize: '14px', fontWeight: 'bold' }}>
-                  {formatCurrency(calculations.subtotal)}
+                  {formatCurrency(calculations.subtotal, invoiceData.currency)}
                 </div>
               </div>
 
@@ -238,7 +246,7 @@ const InvoicePreview = ({
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '50px', marginBottom: '10px' }}>
                   <div style={{ fontSize: '14px', textAlign: 'right' }}>Tax ({calculations.tax}%):</div>
                   <div style={{ fontSize: '14px', fontWeight: 'bold' }}>
-                    {formatCurrency(calculations.taxAmount)}
+                    {formatCurrency(calculations.taxAmount, invoiceData.currency)}
                   </div>
                 </div>
               )}
@@ -247,7 +255,7 @@ const InvoicePreview = ({
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '50px', marginBottom: '10px' }}>
                   <div style={{ fontSize: '14px', textAlign: 'right' }}>Discount:</div>
                   <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#ef4444' }}>
-                    -{formatCurrency(calculations.discountAmount)}
+                    -{formatCurrency(calculations.discountAmount, invoiceData.currency)}
                   </div>
                 </div>
               )}
@@ -265,11 +273,42 @@ const InvoicePreview = ({
               >
                 <div style={{ fontSize: '16px', fontWeight: 'bold' }}>TOTAL:</div>
                 <div style={{ fontSize: '16px', fontWeight: 'bold' }}>
-                  {formatCurrency(calculations.total)}
+                  {formatCurrency(calculations.total, invoiceData.currency)}
                 </div>
               </div>
             </div>
           </div>
+
+          {/* BANK / PAYMENT DETAILS — immediately after totals */}
+          {invoiceData.bankDetails && invoiceData.bankDetails.bankName && (
+            <div style={{
+              padding: '16px 20px',
+              border: `1px solid ${colors.border || '#e2e8f0'}`,
+              borderRadius: '6px',
+              backgroundColor: colors.accent || '#f8fafc',
+              marginBottom: '24px',
+            }}>
+              <h4 style={{
+                fontFamily: templateConfig.fonts.heading,
+                fontSize: '13px',
+                fontWeight: 'bold',
+                color: colors.primary,
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                marginBottom: '12px',
+              }}>
+                Payment Information
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '6px 16px' }}>
+                <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#333' }}>Bank Name:</span>
+                <span style={{ fontSize: '13px', color: '#111' }}>{invoiceData.bankDetails.bankName}</span>
+                <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#333' }}>Account Name:</span>
+                <span style={{ fontSize: '13px', color: '#111' }}>{invoiceData.bankDetails.accountName}</span>
+                <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#333' }}>Account Number:</span>
+                <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#111' }}>{invoiceData.bankDetails.accountNumber}</span>
+              </div>
+            </div>
+          )}
 
           {/* NOTES & TERMS */}
           {(invoiceData.notes || invoiceData.terms) && (
@@ -325,13 +364,7 @@ const InvoicePreview = ({
             fontSize: '12px'
           }}
         >
-          <p>Thank you for your business!</p>
-          {invoiceData.bankDetails && (
-            <p style={{ marginTop: '8px' }}>
-              Bank: {invoiceData.bankDetails.bankName} | 
-              Account: {invoiceData.bankDetails.accountNumber}
-            </p>
-          )}
+        <p>Thank you for your business!</p>
         </div>
       </div>
     </div>

@@ -10,7 +10,7 @@ const ProtectedRoute = ({ children }) => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="modern-spinner spinner-lg spinner-glow"></div>
       </div>
     );
   }
@@ -33,7 +33,7 @@ const ProtectedRoute = ({ children }) => {
   if (typeof window === 'undefined') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="modern-spinner spinner-lg spinner-glow"></div>
       </div>
     );
   }

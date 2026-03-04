@@ -85,7 +85,7 @@ const PricingPage = () => {
               className={`rounded-lg overflow-hidden transition transform hover:scale-105 ${
                 plan.recommended
                   ? isDarkMode
-                    ? 'bg-blue-900 ring-2 ring-blue-500 shadow-lg'
+                    ? 'bg-brand-navy ring-2 ring-brand-navy shadow-lg'
                     : 'bg-white ring-2 ring-blue-600 shadow-lg'
                   : isDarkMode
                   ? 'bg-gray-800'
@@ -94,7 +94,7 @@ const PricingPage = () => {
             >
               {/* Recommended Badge */}
               {plan.recommended && (
-                <div className="bg-blue-600 text-white py-2 text-center font-bold text-sm">
+                <div className="bg-brand-emerald text-white py-2 text-center font-bold text-sm">
                   ⭐ MOST POPULAR
                 </div>
               )}
@@ -135,7 +135,7 @@ const PricingPage = () => {
                       ? isDarkMode
                         ? 'bg-gray-700 text-gray-300 cursor-not-allowed'
                         : 'bg-gray-100 text-gray-500 cursor-not-allowed'
-                      : 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
+                      : 'bg-brand-emerald text-white hover:bg-emerald-700 active:bg-emerald-800'
                   } ${loading && selectedPlan === plan.id ? 'opacity-50' : ''}`}
                 >
                   {user?.subscription?.plan === plan.id
@@ -247,7 +247,7 @@ const PricingPage = () => {
           </p>
           <button
             onClick={() => navigate(user ? '/invoice/create' : '/signup')}
-            className="bg-blue-600 text-white px-8 py-4 rounded-lg font-bold text-lg hover:bg-blue-700 transition inline-flex items-center space-x-2"
+            className="bg-brand-emerald text-white px-8 py-4 rounded-lg font-bold text-lg hover:bg-emerald-700 transition inline-flex items-center space-x-2"
           >
             <Zap className="h-5 w-5" />
             <span>Create Your First Invoice</span>

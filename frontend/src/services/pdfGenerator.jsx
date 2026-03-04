@@ -13,13 +13,27 @@ import {
 import { pdf } from '@react-pdf/renderer';
 import { getTemplate } from '../data/invoiceTemplates';
 import { calculateInvoice } from '../utils/invoiceCalculations';
+import { formatCurrency, getCurrency } from '../utils/currencyUtils';
 
-// Register fonts for better typography
+// Register fonts for better typography and currency support
+import { Font } from '@react-pdf/renderer';
+
+// Use Roboto from a reliable CDN (these are actual .ttf static font files)
+Font.register({
+  family: 'Roboto',
+  fonts: [
+    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-light-webfont.ttf', fontWeight: 300 },
+    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-regular-webfont.ttf', fontWeight: 400 },
+    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-medium-webfont.ttf', fontWeight: 500 },
+    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-bold-webfont.ttf', fontWeight: 700 },
+  ]
+});
+
 const styles = StyleSheet.create({
   page: {
     padding: 40,
     fontSize: 11,
-    fontFamily: 'Helvetica'
+    fontFamily: 'Roboto'
   },
   header: {
     marginBottom: 30,
@@ -27,7 +41,9 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     display: 'flex',
     flexDirection: 'row',
-    justifyContent: 'space-between'
+    justifyContent: 'space-between',
+    backgroundColor: 'transparent',
+    padding: 10
   },
   logo: {
     width: 100,
@@ -64,8 +80,6 @@ const styles = StyleSheet.create({
   tableHeader: {
     display: 'flex',
     flexDirection: 'row',
-    backgroundColor: '#2563eb',
-    color: '#fff',
     fontWeight: 'bold'
   },
   tableRow: {
@@ -95,7 +109,6 @@ const styles = StyleSheet.create({
   totalAmount: {
     fontWeight: 'bold',
     fontSize: 12,
-    backgroundColor: '#2563eb',
     color: '#fff',
     padding: 8,
     marginTop: 10
@@ -106,9 +119,22 @@ const styles = StyleSheet.create({
  * Generate PDF Document
  * Creates a professional invoice PDF with proper DPI and embedded fonts
  */
-const PDFInvoice = ({ invoiceData, template = 'modern-clean' }) => {
+export const PDFInvoice = ({ invoiceData: rawData, template = 'modern-clean' }) => {
   const templateConfig = getTemplate(template);
   const colors = templateConfig.colors;
+
+  // Normalize backend shape (client.name, company.name) to flat fields
+  const invoiceData = {
+    ...rawData,
+    businessName: rawData.businessName || rawData.company?.name || 'Your Business',
+    businessAddress: rawData.businessAddress || rawData.company?.address || '',
+    businessEmail: rawData.businessEmail || rawData.company?.email || '',
+    businessPhone: rawData.businessPhone || rawData.company?.phone || '',
+    businessLogo: rawData.businessLogo || rawData.company?.logo || '',
+    clientName: rawData.clientName || rawData.toName || rawData.client?.name || '',
+    clientAddress: rawData.clientAddress || rawData.toAddress || rawData.client?.address || '',
+    clientEmail: rawData.clientEmail || rawData.toEmail || rawData.client?.email || '',
+  };
 
   // Use centralized calculation engine
   const calculations = calculateInvoice({
@@ -119,12 +145,18 @@ const PDFInvoice = ({ invoiceData, template = 'modern-clean' }) => {
     taxBasis: 'subtotal'
   });
 
-  const formatCurrency = (amount) => {
-    return '₦' + (parseFloat(amount) || 0).toLocaleString('en-NG', { minimumFractionDigits: 2 });
+  const currencyCode = invoiceData.currency || 'NGN';
+  // Roboto supports $, €, £, R but not ₦, ₹, ₵ — use code prefix for unsupported symbols
+  const ROBOTO_SAFE_SYMBOLS = { USD: '$', EUR: '€', GBP: '£', ZAR: 'R', CAD: 'CA$', AUD: 'A$' };
+  const formatCurrencyLocal = (amount) => {
+    const value = (parseFloat(amount) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const symbol = ROBOTO_SAFE_SYMBOLS[currencyCode];
+    return symbol ? `${symbol}${value}` : `${currencyCode} ${value}`;
   };
 
   const formatDate = (date) => {
-    return new Date(date).toLocaleDateString('en-NG', {
+    const locale = invoiceData.locale || getCurrency(currencyCode).locale || 'en-NG';
+    return new Date(date).toLocaleDateString(locale, {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
@@ -133,9 +165,12 @@ const PDFInvoice = ({ invoiceData, template = 'modern-clean' }) => {
 
   return (
     <Document>
-      <Page size="A4" style={styles.page} dpi={300}>
-        {/* HEADER */}
-        <View style={styles.header}>
+      <Page size="A4" style={{ ...styles.page, backgroundColor: '#ffffff', color: '#000000' }} dpi={300}>
+        {/* ACCENT STRIPE */}
+        <View style={{ width: '100%', height: 6, backgroundColor: colors.primary || '#0F172A' }} />
+
+        {/* HEADER - light to match preview */}
+        <View style={{ ...styles.header, backgroundColor: '#ffffff', borderBottomWidth: 0, paddingTop: 8 }}>
           <View style={styles.col}>
             {invoiceData.businessLogo && (
               <Image
@@ -143,7 +178,7 @@ const PDFInvoice = ({ invoiceData, template = 'modern-clean' }) => {
                 style={styles.logo}
               />
             )}
-            <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 8 }}>
+            <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 8, color: colors.primary || '#0F172A' }}>
               {invoiceData.businessName || 'Your Business'}
             </Text>
             <Text style={{ fontSize: 9, color: '#666' }}>
@@ -155,7 +190,7 @@ const PDFInvoice = ({ invoiceData, template = 'modern-clean' }) => {
           </View>
 
           <View>
-            <Text style={styles.title}>INVOICE</Text>
+            <Text style={{...styles.title, color: colors.primary || '#0F172A'}}>INVOICE</Text>
             <View style={styles.row}>
               <Text style={{ fontWeight: 'bold', width: 80 }}>Invoice #:</Text>
               <Text>{invoiceData.invoiceNumber}</Text>
@@ -199,11 +234,12 @@ const PDFInvoice = ({ invoiceData, template = 'modern-clean' }) => {
 
         {/* ITEMS TABLE */}
         <View style={styles.table}>
-          <View style={styles.tableHeader}>
-            <Text style={{ ...styles.tableCell, flex: 2 }}>Description</Text>
-            <Text style={styles.tableCell}>Qty</Text>
-            <Text style={styles.tableCell}>Rate</Text>
-            <Text style={styles.tableCell}>Amount</Text>
+          <View style={{ ...styles.tableHeader, backgroundColor: colors.primary, color: colors.tableHeader || '#ffffff' }}>
+            <Text style={{ ...styles.tableCell, flex: 2 }}>Item</Text>
+            <Text style={{ ...styles.tableCell, flex: 3 }}>Description</Text>
+            <Text style={{ ...styles.tableCell, textAlign: 'right' }}>Qty</Text>
+            <Text style={{ ...styles.tableCell, textAlign: 'right' }}>Rate</Text>
+            <Text style={{ ...styles.tableCell, textAlign: 'right' }}>Amount</Text>
           </View>
 
           {invoiceData.items.map((item, idx) => (
@@ -211,14 +247,15 @@ const PDFInvoice = ({ invoiceData, template = 'modern-clean' }) => {
               key={idx}
               style={{
                 ...styles.tableRow,
-                backgroundColor: idx % 2 === 0 ? '#fff' : '#f9fafb'
+                backgroundColor: idx % 2 === 0 ? 'transparent' : colors.accent
               }}
             >
-              <Text style={{ ...styles.tableCell, flex: 2 }}>{item.name}</Text>
-              <Text style={styles.tableCell}>{item.quantity}</Text>
-              <Text style={styles.tableCell}>{formatCurrency(item.price)}</Text>
-              <Text style={styles.tableCell}>
-                {formatCurrency(item.quantity * item.price)}
+              <Text style={{ ...styles.tableCell, flex: 2, fontWeight: 'bold' }}>{item.name}</Text>
+              <Text style={{ ...styles.tableCell, flex: 3, wrap: true }}>{item.description || '-'}</Text>
+              <Text style={{ ...styles.tableCell, textAlign: 'right' }}>{item.quantity}</Text>
+              <Text style={{ ...styles.tableCell, textAlign: 'right' }}>{formatCurrencyLocal(item.price)}</Text>
+              <Text style={{ ...styles.tableCell, textAlign: 'right' }}>
+                {formatCurrencyLocal(item.quantity * item.price)}
               </Text>
             </View>
           ))}
@@ -228,31 +265,67 @@ const PDFInvoice = ({ invoiceData, template = 'modern-clean' }) => {
         <View style={styles.totalsSection}>
           <View style={styles.totalRow}>
             <Text>Subtotal:</Text>
-            <Text>{formatCurrency(calculations.subtotal)}</Text>
+            <Text>{formatCurrencyLocal(calculations.subtotal)}</Text>
           </View>
 
           {calculations.tax > 0 && (
             <View style={styles.totalRow}>
               <Text>Tax ({calculations.tax}%):</Text>
-              <Text>{formatCurrency(calculations.taxAmount)}</Text>
+              <Text>{formatCurrencyLocal(calculations.taxAmount)}</Text>
             </View>
           )}
 
           {calculations.discountAmount > 0 && (
             <View style={styles.totalRow}>
               <Text>Discount:</Text>
-              <Text style={{ color: '#ef4444' }}>-{formatCurrency(calculations.discountAmount)}</Text>
+              <Text style={{ color: '#ef4444' }}>-{formatCurrencyLocal(calculations.discountAmount)}</Text>
             </View>
           )}
 
-          <View style={styles.totalAmount}>
-            <Text>TOTAL: {formatCurrency(calculations.total)}</Text>
+          <View style={{ ...styles.totalAmount, backgroundColor: colors.primary, color: colors.tableHeader || '#ffffff' }}>
+            <Text>TOTAL: {formatCurrencyLocal(calculations.total)}</Text>
           </View>
         </View>
 
+        {/* BANK / PAYMENT DETAILS — immediately after totals */}
+        {invoiceData.bankDetails && invoiceData.bankDetails.bankName && (
+          <View style={{
+            marginTop: 20,
+            padding: 14,
+            borderWidth: 1,
+            borderColor: colors.border || '#e2e8f0',
+            borderRadius: 4,
+            backgroundColor: colors.accent || '#f8fafc',
+          }}>
+            <Text style={{
+              fontSize: 11,
+              fontWeight: 'bold',
+              color: colors.primary || '#000',
+              marginBottom: 10,
+              textTransform: 'uppercase',
+              letterSpacing: 0.5,
+            }}>
+              Payment Information
+            </Text>
+
+            <View style={{ flexDirection: 'row', marginBottom: 6 }}>
+              <Text style={{ fontSize: 10, fontWeight: 'bold', width: 110, color: '#333' }}>Bank Name:</Text>
+              <Text style={{ fontSize: 10, color: '#111' }}>{invoiceData.bankDetails.bankName}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', marginBottom: 6 }}>
+              <Text style={{ fontSize: 10, fontWeight: 'bold', width: 110, color: '#333' }}>Account Name:</Text>
+              <Text style={{ fontSize: 10, color: '#111' }}>{invoiceData.bankDetails.accountName}</Text>
+            </View>
+            <View style={{ flexDirection: 'row' }}>
+              <Text style={{ fontSize: 10, fontWeight: 'bold', width: 110, color: '#333' }}>Account Number:</Text>
+              <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#111' }}>{invoiceData.bankDetails.accountNumber}</Text>
+            </View>
+          </View>
+        )}
+
         {/* NOTES & TERMS */}
         {(invoiceData.notes || invoiceData.terms) && (
-          <View style={{ marginTop: 30 }}>
+          <View style={{ marginTop: 20 }}>
             {invoiceData.notes && (
               <View style={{ marginBottom: 15 }}>
                 <Text style={styles.sectionTitle}>NOTES</Text>
@@ -296,6 +369,212 @@ const PDFInvoice = ({ invoiceData, template = 'modern-clean' }) => {
 };
 
 /**
+ * Generate PDF Document specifically for Receipts
+ */
+export const PDFReceipt = ({ invoiceData: rawData, template = 'modern-clean' }) => {
+  const templateConfig = getTemplate(template);
+  const colors = templateConfig.colors;
+
+  // Normalize backend shape (client.name, company.name) to flat fields
+  const invoiceData = {
+    ...rawData,
+    businessName: rawData.businessName || rawData.company?.name || 'Your Business',
+    businessAddress: rawData.businessAddress || rawData.company?.address || '',
+    businessEmail: rawData.businessEmail || rawData.company?.email || '',
+    businessPhone: rawData.businessPhone || rawData.company?.phone || '',
+    businessLogo: rawData.businessLogo || rawData.company?.logo || '',
+    clientName: rawData.clientName || rawData.toName || rawData.client?.name || '',
+    clientAddress: rawData.clientAddress || rawData.toAddress || rawData.client?.address || '',
+    clientEmail: rawData.clientEmail || rawData.toEmail || rawData.client?.email || '',
+  };
+
+  // Use centralized calculation engine
+  const calculations = calculateInvoice({
+    items: invoiceData.items || [],
+    discount: invoiceData.discount || 0,
+    discountType: 'fixed',
+    taxRate: invoiceData.taxRate || 0,
+    taxBasis: 'subtotal'
+  });
+
+  const currencyCode = invoiceData.currency || 'NGN';
+  const ROBOTO_SAFE_SYMBOLS = { USD: '$', EUR: '€', GBP: '£', ZAR: 'R', CAD: 'CA$', AUD: 'A$' };
+  const formatCurrencyLocal = (amount) => {
+    const value = (parseFloat(amount) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const symbol = ROBOTO_SAFE_SYMBOLS[currencyCode];
+    return symbol ? `${symbol}${value}` : `${currencyCode} ${value}`;
+  };
+
+  const formatDate = (date) => {
+    const locale = invoiceData.locale || getCurrency(currencyCode).locale || 'en-NG';
+    return new Date(date).toLocaleDateString(locale, {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  return (
+    <Document>
+      <Page size="A4" style={{ ...styles.page, backgroundColor: templateConfig.darkBackground ? '#1a1a1a' : '#ffffff', color: templateConfig.darkBackground ? '#ffffff' : '#000000' }} dpi={300}>
+        {/* ACCENT STRIPE */}
+        <View style={{ width: '100%', height: 6, backgroundColor: colors.primary || '#22c55e' }} />
+
+        {/* HEADER */}
+        <View style={{ ...styles.header, backgroundColor: colors.primary || styles.header.backgroundColor }}>
+          <View style={styles.col}>
+            {invoiceData.businessLogo && (
+              <Image
+                src={invoiceData.businessLogo}
+                style={styles.logo}
+              />
+            )}
+            <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 8, color: '#fff' }}>
+              {invoiceData.businessName || 'Your Business'}
+            </Text>
+            <Text style={{ fontSize: 9, color: '#ccc' }}>
+              {invoiceData.businessAddress}
+            </Text>
+            <Text style={{ fontSize: 9, color: '#ccc' }}>
+              {invoiceData.businessEmail}
+            </Text>
+          </View>
+
+          <View>
+            <Text style={{...styles.title, color: '#fff'}}>RECEIPT</Text>
+            <View style={styles.row}>
+              <Text style={{ fontWeight: 'bold', width: 80 }}>Receipt #:</Text>
+              <Text>REC-{invoiceData.invoiceNumber}</Text>
+            </View>
+            <View style={styles.row}>
+              <Text style={{ fontWeight: 'bold', width: 80 }}>Paid Date:</Text>
+              <Text>{formatDate(new Date())}</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* FROM & TO */}
+        <View style={{ display: 'flex', flexDirection: 'row', marginBottom: 30 }}>
+          <View style={styles.col}>
+            <Text style={styles.sectionTitle}>PAID TO</Text>
+            <Text style={{ fontWeight: 'bold' }}>{invoiceData.businessName}</Text>
+            <Text style={{ fontSize: 9, color: '#666' }}>
+              {invoiceData.businessAddress}
+            </Text>
+          </View>
+
+          <View style={styles.col}>
+            <Text style={styles.sectionTitle}>RECEIVED FROM</Text>
+            <Text style={{ fontWeight: 'bold' }}>{invoiceData.clientName}</Text>
+            <Text style={{ fontSize: 9, color: '#666' }}>
+              {invoiceData.clientAddress}
+            </Text>
+            {invoiceData.clientEmail && (
+              <Text style={{ fontSize: 9, color: '#666' }}>
+                {invoiceData.clientEmail}
+              </Text>
+            )}
+          </View>
+        </View>
+
+        {/* ITEMS TABLE */}
+        <View style={styles.table}>
+          <View style={{ ...styles.tableHeader, backgroundColor: colors.primary, color: colors.tableHeader || '#ffffff' }}>
+            <Text style={{ ...styles.tableCell, flex: 2 }}>Item</Text>
+            <Text style={{ ...styles.tableCell, flex: 3 }}>Description</Text>
+            <Text style={{ ...styles.tableCell, textAlign: 'right' }}>Qty</Text>
+            <Text style={{ ...styles.tableCell, textAlign: 'right' }}>Rate</Text>
+            <Text style={{ ...styles.tableCell, textAlign: 'right' }}>Amount</Text>
+          </View>
+
+          {invoiceData.items.map((item, idx) => (
+            <View 
+              key={idx}
+              style={{
+                ...styles.tableRow,
+                backgroundColor: idx % 2 === 0 ? 'transparent' : colors.accent
+              }}
+            >
+              <Text style={{ ...styles.tableCell, flex: 2, fontWeight: 'bold' }}>{item.name}</Text>
+              <Text style={{ ...styles.tableCell, flex: 3, wrap: true }}>{item.description || '-'}</Text>
+              <Text style={{ ...styles.tableCell, textAlign: 'right' }}>{item.quantity}</Text>
+              <Text style={{ ...styles.tableCell, textAlign: 'right' }}>{formatCurrencyLocal(item.price)}</Text>
+              <Text style={{ ...styles.tableCell, textAlign: 'right' }}>
+                {formatCurrencyLocal(item.quantity * item.price)}
+              </Text>
+            </View>
+          ))}
+        </View>
+
+        {/* TOTALS */}
+        <View style={styles.totalsSection}>
+          <View style={styles.totalRow}>
+            <Text>Subtotal:</Text>
+            <Text>{formatCurrencyLocal(calculations.subtotal)}</Text>
+          </View>
+
+          {calculations.tax > 0 && (
+            <View style={styles.totalRow}>
+              <Text>Tax ({calculations.tax}%):</Text>
+              <Text>{formatCurrencyLocal(calculations.taxAmount)}</Text>
+            </View>
+          )}
+
+          {calculations.discountAmount > 0 && (
+            <View style={styles.totalRow}>
+              <Text>Discount:</Text>
+              <Text style={{ color: '#ef4444' }}>-{formatCurrencyLocal(calculations.discountAmount)}</Text>
+            </View>
+          )}
+
+          <View style={{ ...styles.totalAmount, backgroundColor: '#22c55e', color: '#ffffff' }}>
+            <Text>TOTAL PAID: {formatCurrencyLocal(calculations.total)}</Text>
+          </View>
+        </View>
+
+        {/* QR CODE SECTION */}
+        {invoiceData.qrCode ? (
+          <View style={{ marginTop: 20, alignItems: 'center' }}>
+            <Image
+              src={invoiceData.qrCode}
+              style={{ width: 100, height: 100, marginBottom: 5 }}
+            />
+            <Text style={{ fontSize: 9, color: '#666', textAlign: 'center' }}>
+              Scan QR code to verify this receipt online
+            </Text>
+          </View>
+        ) : (
+          <View style={{ marginTop: 20, alignItems: 'center' }}>
+            <Text style={{ fontSize: 9, color: '#999' }}>
+              QR code not available
+            </Text>
+          </View>
+        )}
+
+        {/* FOOTER */}
+        <View
+          style={{
+            position: 'absolute',
+            bottom: 30,
+            left: 40,
+            right: 40,
+            borderTopWidth: 1,
+            borderTopColor: '#e2e8f0',
+            paddingTop: 10,
+            textAlign: 'center',
+            fontSize: 10,
+            color: '#22c55e',
+            fontWeight: 'bold'
+          }}
+        >
+          <Text>Thank you for your payment!</Text>
+        </View>
+      </Page>
+    </Document>
+  );
+};
+
+/**
  * Generate and download PDF
  * @param {object} invoiceData - Invoice data
  * @param {string} template - Template ID
@@ -304,42 +583,8 @@ export const downloadInvoicePDF = async (invoiceData, template = 'modern-clean')
   try {
     const fileName = `Invoice-${invoiceData.invoiceNumber || 'draft'}.pdf`;
     
-    // Try to get from backend first
-    const token = localStorage.getItem('token');
-    if (token && invoiceData._id) {
-      try {
-        // Determine API URL (same logic as api.js)
-        const getApiUrl = () => {
-           if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
-           if (window.location.hostname === 'localhost') return 'http://localhost:5000';
-           return ''; // Relative path fallback
-        };
-        const apiUrl = getApiUrl();
-        const baseUrl = apiUrl ? (apiUrl.endsWith('/api') ? apiUrl : `${apiUrl}/api`) : '/api';
-        
-        const response = await fetch(`${baseUrl}/invoices/pdf/${invoiceData._id}`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          }
-        });
-
-        if (response.ok) {
-          const blob = await response.blob();
-          const url = window.URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = fileName;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          window.URL.revokeObjectURL(url);
-          return;
-        }
-      } catch (err) {
-        console.error('Backend PDF failed, using fallback:', err);
-      }
-    }
+    // Force client-side generation to ensure template matches preview
+    // accessing backend PDF often results in generic/wrong template
 
     // Fallback: generate PDF client-side using react-pdf
     const doc = <PDFInvoice invoiceData={invoiceData} template={template} />;
@@ -387,10 +632,27 @@ export const generatePDFBlob = async (invoiceData, template = 'modern-clean') =>
 };
 
 /**
+ * Export PDF as blob specifically for Receipts
+ */
+export const generateReceiptPDFBlob = async (invoiceData, template = 'modern-clean') => {
+  try {
+    const doc = <PDFReceipt invoiceData={invoiceData} template={template} />;
+    const asPdf = pdf();
+    asPdf.updateContainer(doc);
+    const blob = await asPdf.toBlob();
+    return blob;
+  } catch (error) {
+    console.error('❌ [BLOB] Receipt PDF Generation Error:', error);
+    throw new Error('Failed to generate Receipt PDF: ' + (error.message || 'Unknown error'));
+  }
+};
+
+/**
  * Format invoice as plain text
  */
 const formatInvoiceAsText = (invoiceData) => {
   const divider = '='.repeat(60);
+  const cur = invoiceData.currency || 'NGN';
   return `
 ${divider}
 INVOICE #${invoiceData.invoiceNumber || 'DRAFT'}
@@ -412,18 +674,18 @@ ITEMS:
 ${divider}
 
 ${invoiceData.items?.map(item => 
-  `${item.description || item.name || 'Item'}\nQuantity: ${item.quantity}, Rate: ₦${item.rate}, Total: ₦${item.quantity * item.rate}`
+  `${item.description || item.name || 'Item'}\nQuantity: ${item.quantity}, Rate: ${cur} ${item.rate}, Total: ${cur} ${item.quantity * item.rate}`
 ).join('\n\n') || 'No items'}
 
 ${divider}
 TOTALS:
 ${divider}
 
-Subtotal: ₦${invoiceData.subtotal || 0}
-Tax (${invoiceData.taxRate || 0}%): ₦${invoiceData.tax || 0}
-Discount: ₦${invoiceData.discount || 0}
+Subtotal: ${cur} ${invoiceData.subtotal || 0}
+Tax (${invoiceData.taxRate || 0}%): ${cur} ${invoiceData.tax || 0}
+Discount: ${cur} ${invoiceData.discount || 0}
 
-TOTAL: ₦${invoiceData.total || 0}
+TOTAL: ${cur} ${invoiceData.total || 0}
 
 ${divider}
 ${invoiceData.notes ? `NOTES:\n${invoiceData.notes}\n\n` : ''}
@@ -431,5 +693,3 @@ Thank you for your business!
 ${divider}
   `.trim();
 };
-
-export default PDFInvoice;

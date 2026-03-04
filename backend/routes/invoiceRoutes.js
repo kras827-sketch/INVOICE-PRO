@@ -15,6 +15,8 @@ const {
   downloadPDF,
   sendInvoice,
   getStats,
+  markAsPaid,
+  markPaidOnly,
 } = require('../controllers/invoiceController');
 
 /**
@@ -53,6 +55,16 @@ router.get('/pdf/:id', protect, downloadPDF);
 // @desc    Send invoice via email
 // @access  Private
 router.post('/send/:id', protect, sendInvoice);
+
+// @route   PUT /api/invoices/:id/mark-as-paid
+// @desc    Mark invoice as paid and create receipt
+// @access  Private
+router.put('/:id/mark-as-paid', protect, markAsPaid);
+
+// @route   PUT /api/invoices/:id/mark-paid-only
+// @desc    Mark invoice as paid ONLY without generating receipt
+// @access  Private
+router.put('/:id/mark-paid-only', protect, markPaidOnly);
 
 // ============================================
 // GENERAL COLLECTION ROUTE

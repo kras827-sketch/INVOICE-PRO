@@ -14,7 +14,8 @@ export const INVOICE_TEMPLATES = {
       accent: '#f0f9ff',
       text: '#1e293b',
       lightText: '#64748b',
-      border: '#e2e8f0'
+      border: '#e2e8f0',
+      tableHeader: '#ffffff'
     },
     fonts: {
       heading: 'Segoe UI, Tahoma, Geneva, Verdana',
@@ -40,7 +41,8 @@ export const INVOICE_TEMPLATES = {
       accent: '#e6f2ff',
       text: '#1a1a1a',
       lightText: '#666666',
-      border: '#ccddff'
+      border: '#ccddff',
+      tableHeader: '#ffffff'
     },
     fonts: {
       heading: 'Georgia, serif',
@@ -66,7 +68,8 @@ export const INVOICE_TEMPLATES = {
       accent: '#f8f9fa',
       text: '#000000',
       lightText: '#757575',
-      border: '#e0e0e0'
+      border: '#e0e0e0',
+      tableHeader: '#ffffff'
     },
     fonts: {
       heading: 'Helvetica Neue, Arial',
@@ -87,12 +90,13 @@ export const INVOICE_TEMPLATES = {
     name: 'Bold Dark',
     description: 'Bold design with dark background and vibrant accents',
     colors: {
-      primary: '#ffffff',
+      primary: '#1a1a1a',
       secondary: '#e0e0e0',
-      accent: '#1a1a1a',
-      text: '#ffffff',
-      lightText: '#b0b0b0',
-      border: '#333333'
+      accent: '#333333',
+      text: '#1a1a1a',
+      lightText: '#4b5563',
+      border: '#333333',
+      tableHeader: '#ffffff'
     },
     fonts: {
       heading: 'Trebuchet MS, sans-serif',
@@ -108,10 +112,8 @@ export const INVOICE_TEMPLATES = {
       maxHeight: '55px',
       position: 'top-right'
     },
-    darkBackground: true
-  }
-  ,
-  // Premium templates
+    darkBackground: false
+  },
   'elegant-gold': {
     name: 'Elegant Gold',
     description: 'Premium luxury template with gold accents and refined typography',
@@ -121,7 +123,8 @@ export const INVOICE_TEMPLATES = {
       accent: '#fff9f2',
       text: '#1b1b1b',
       lightText: '#6b6b6b',
-      border: '#efe6dc'
+      border: '#efe6dc',
+      tableHeader: '#ffffff'
     },
     fonts: {
       heading: 'Georgia, serif',
@@ -144,11 +147,12 @@ export const INVOICE_TEMPLATES = {
     description: 'Modern creative layout with vibrant gradient accents and playful layout',
     colors: {
       primary: '#ff7a59',
-      secondary: '#6f5ce8',
-      accent: 'linear-gradient(90deg, #ff7a59 0%, #6f5ce8 100%)',
+      secondary: '#334155',
+      accent: '#f8fafc',
       text: '#111827',
       lightText: '#6b7280',
-      border: '#f3f4f6'
+      border: '#f3f4f6',
+      tableHeader: '#ffffff'
     },
     fonts: {
       heading: 'Inter, system-ui, -apple-system, Segoe UI, Roboto',
@@ -175,7 +179,8 @@ export const INVOICE_TEMPLATES = {
       accent: '#e6f7fb',
       text: '#0f1724',
       lightText: '#475569',
-      border: '#dbeeff'
+      border: '#dbeeff',
+      tableHeader: '#ffffff'
     },
     fonts: {
       heading: 'Montserrat, sans-serif',
@@ -192,8 +197,7 @@ export const INVOICE_TEMPLATES = {
       position: 'top-center'
     },
     premium: true
-  }
-  ,
+  },
   'modern-minimal': {
     name: 'Modern Minimal',
     description: 'Soft minimal layout focused on whitespace and readability',
@@ -203,7 +207,8 @@ export const INVOICE_TEMPLATES = {
       accent: '#f7fafc',
       text: '#0f1724',
       lightText: '#6b7280',
-      border: '#e6eef6'
+      border: '#e6eef6',
+      tableHeader: '#ffffff'
     },
     fonts: {
       heading: 'Inter, system-ui, -apple-system, Segoe UI, Roboto',
@@ -230,7 +235,8 @@ export const INVOICE_TEMPLATES = {
       accent: '#ffffff',
       text: '#0b1220',
       lightText: '#475569',
-      border: '#d1d5db'
+      border: '#d1d5db',
+      tableHeader: '#ffffff'
     },
     fonts: {
       heading: 'Times New Roman, Georgia, serif',
@@ -257,7 +263,8 @@ export const INVOICE_TEMPLATES = {
       accent: '#effaf9',
       text: '#0f1724',
       lightText: '#64748b',
-      border: '#cfece9'
+      border: '#cfece9',
+      tableHeader: '#ffffff'
     },
     fonts: {
       heading: 'Poppins, system-ui, -apple-system',
@@ -281,10 +288,11 @@ export const INVOICE_TEMPLATES = {
     colors: {
       primary: '#ffb760',
       secondary: '#ff6b6b',
-      accent: 'linear-gradient(90deg,#ffdba1 0%,#ffb760 100%)',
+      accent: '#fff1e6',
       text: '#0b1220',
       lightText: '#7c7c7c',
-      border: '#fff1e6'
+      border: '#fff1e6',
+      tableHeader: '#0b1220'
     },
     fonts: {
       heading: 'Nunito, system-ui, -apple-system',
@@ -311,7 +319,8 @@ export const INVOICE_TEMPLATES = {
       accent: '#f8fafc',
       text: '#0f1724',
       lightText: '#6b7280',
-      border: '#e5e7eb'
+      border: '#e5e7eb',
+      tableHeader: '#ffffff'
     },
     fonts: {
       heading: 'Merriweather, Georgia, serif',

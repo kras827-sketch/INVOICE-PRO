@@ -75,11 +75,11 @@ const OTPVerification = ({ phoneNumber, onVerificationSuccess }) => {
   };
 
   return (
-    <div className={`min-h-screen flex items-center justify-center p-4 ${isDarkMode ? 'bg-gradient-to-br from-gray-900 via-gray-950 to-gray-900' : 'bg-gradient-to-br from-blue-50 to-purple-50'}`}>
+    <div className={`min-h-screen flex items-center justify-center p-4 ${isDarkMode ? 'bg-gray-950' : 'bg-brand-white'}`}>
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
-          <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${isDarkMode ? 'bg-blue-900/30' : 'bg-blue-100'}`}>
-            <Lock className="h-8 w-8 text-blue-600" />
+          <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${isDarkMode ? 'bg-brand-navy/30' : 'bg-brand-emerald/10'}`}>
+            <Lock className="h-8 w-8 text-emerald-600" />
           </div>
           <h1 className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Verify Phone</h1>
           <p className={`mt-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
@@ -115,14 +115,14 @@ const OTPVerification = ({ phoneNumber, onVerificationSuccess }) => {
                 placeholder="000000"
                 maxLength="6"
                 disabled={isLoading}
-                className={`w-full px-4 py-4 border-2 rounded-lg text-center text-2xl font-bold tracking-widest focus:ring-2 focus:ring-blue-500 focus:border-transparent transition ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' : 'border-gray-300 text-gray-900 placeholder-gray-400'} disabled:opacity-50`}
+                className={`w-full px-4 py-4 border-2 rounded-lg text-center text-2xl font-bold tracking-widest focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' : 'border-gray-300 text-gray-900 placeholder-gray-400'} disabled:opacity-50`}
               />
             </div>
 
             <button
               type="submit"
               disabled={isLoading || otp.length < 6}
-              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-3 rounded-lg font-semibold hover:from-blue-700 hover:to-blue-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 text-white py-3 rounded-lg font-semibold hover:from-emerald-700 hover:to-emerald-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? 'Verifying...' : 'Verify & Continue'}
             </button>
@@ -131,7 +131,7 @@ const OTPVerification = ({ phoneNumber, onVerificationSuccess }) => {
           <div className={`mt-6 p-4 rounded-lg text-center ${isDarkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
             <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
               OTP expires in{' '}
-              <span className={`font-bold ${timeLeft < 60 ? 'text-red-500' : 'text-blue-600'}`}>
+              <span className={`font-bold ${timeLeft < 60 ? 'text-red-500' : 'text-emerald-600'}`}>
                 {formatTime(timeLeft)}
               </span>
             </p>
@@ -141,7 +141,7 @@ const OTPVerification = ({ phoneNumber, onVerificationSuccess }) => {
             <button
               onClick={handleResendOTP}
               disabled={isLoading}
-              className={`w-full py-2 text-sm font-semibold transition ${isDarkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'} disabled:opacity-50`}
+              className={`w-full py-2 text-sm font-semibold transition ${isDarkMode ? 'text-emerald-400 hover:text-emerald-300' : 'text-emerald-600 hover:text-emerald-700'} disabled:opacity-50`}
             >
               Didn't receive code? Resend OTP
             </button>
