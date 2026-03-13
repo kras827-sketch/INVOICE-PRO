@@ -137,8 +137,6 @@ const receiptSchema = new mongoose.Schema({
 
 // Index for fast lookups
 receiptSchema.index({ user: 1, createdAt: -1 });
-receiptSchema.index({ publicReceiptId: 1 });
-receiptSchema.index({ invoice: 1 });
 
 // Auto-generate verification URL before saving
 receiptSchema.pre('save', function(next) {
