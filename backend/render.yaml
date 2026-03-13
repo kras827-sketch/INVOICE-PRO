@@ -1,0 +1,37 @@
+# Render Blueprint — InvoicePro Backend API
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: invoicepro-api
+    runtime: node
+    plan: starter          # $7/mo — always on (no cold starts). Change to 'free' if testing.
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "10000"     # Render default port
+      - key: MONGODB_URI
+        sync: false        # Set manually in Render dashboard
+      - key: JWT_SECRET
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false        # e.g. https://invoicepro.vercel.app
+      - key: EMAIL_SERVICE
+        sync: false
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: SKIP_SMTP_VERIFY
+        value: "true"      # Skip SMTP verification on startup (verify at send time)

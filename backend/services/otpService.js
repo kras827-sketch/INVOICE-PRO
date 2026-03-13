@@ -10,44 +10,93 @@ const {
   generateOTPEmailPlainText,
 } = require('./emailTemplates');
 
-// Initialize SMTP transporter
-const getTransporter = () => {
-  const transporter = nodemailer.createTransport({
+// shared transporter instance (real SMTP only)
+let sharedTransporter = null;
+
+// Initialize SMTP transporter configuration (reused by senders)
+const createSmtpTransporter = () => {
+  const port = parseInt(process.env.EMAIL_PORT) || 587;
+  const secure = port === 465; // SSL for 465, STARTTLS for 587
+
+  // include service name if provided (helps Gmail, other providers)
+  const transportOptions = {
     host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.EMAIL_PORT) || 587,
-    secure: parseInt(process.env.EMAIL_PORT) === 465, // true for 465, false for other ports
+    port,
+    secure,
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
     },
-  });
+    connectionTimeout: parseInt(process.env.EMAIL_CONN_TIMEOUT) || 30000,
+    greetingTimeout: parseInt(process.env.EMAIL_GREETING_TIMEOUT) || 30000,
+    socketTimeout: parseInt(process.env.EMAIL_SOCKET_TIMEOUT) || 30000,
+    ...(!secure && { tls: { rejectUnauthorized: false } }),
+  };
 
-  console.log(`📧 Configured OTP Email Service: SMTP (${process.env.EMAIL_HOST || 'smtp.gmail.com'})`);
-  return transporter;
+  if (process.env.EMAIL_SERVICE) {
+    transportOptions.service = process.env.EMAIL_SERVICE;
+  }
+
+  return nodemailer.createTransport(transportOptions);
 };
 
+// expose a getter so callers always use the current transporter
+const getTransporter = () => {
+  if (sharedTransporter) return sharedTransporter;
+  // lazily create one if initTransporter hasn't been called (edge-case)
+  sharedTransporter = createSmtpTransporter();
+  return sharedTransporter;
+};
+
+
 // Initialize SMTP on module load
+/**
+ * Attempts to verify the primary SMTP transporter.  If verification fails
+ * (timeout, network block, bad credentials) the error is logged and
+ * the function returns false.  The transporter remains configured with
+ * whatever SMTP settings were provided; no fallback will be created.
+ *
+ * Returns `true` when real SMTP is healthy, `false` otherwise. */
+
+// helper to attempt verification with retries (default 3 attempts)
+async function verifyWithRetries(transporter, retries = parseInt(process.env.SMTP_VERIFY_RETRIES) || 3) {
+  for (let i = 1; i <= retries; i++) {
+    try {
+      console.log(`🔍 Verifying SMTP transporter (attempt ${i}/${retries})...`);
+      await transporter.verify();
+      return true;
+    } catch (err) {
+      console.warn(`⚠️ Verification attempt ${i} failed: ${err.message}`);
+      if (i < retries) {
+        const delay = 1000 * i; // simple backoff
+        console.log(`⏱ retrying in ${delay}ms`);
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+  }
+  return false;
+}
+
 const initTransporter = async () => {
   try {
     console.log('🔧 Initializing email service (SMTP)...');
-    const transporter = getTransporter();
+    sharedTransporter = createSmtpTransporter();
+
     // Optionally skip verification (useful when outbound SMTP is blocked)
     if (process.env.SKIP_SMTP_VERIFY === 'true') {
       console.log('⚠️ SKIP_SMTP_VERIFY is set — skipping SMTP verification at startup');
       return false;
     }
 
-    // Verify transporter connectivity and credentials
-    try {
-      await transporter.verify();
-      console.log(`📧 Email Service: SMTP (${process.env.EMAIL_HOST || 'smtp.gmail.com'})`);
+    const ok = await verifyWithRetries(sharedTransporter);
+    if (ok) {
+      console.log(`📧 Email Service: SMTP (${process.env.EMAIL_HOST || 'smtp.gmail.com'}:${process.env.EMAIL_PORT || 587})`);
       console.log('✅ Email service initialized and ready!');
       return true;
-    } catch (verifyErr) {
-      console.warn('⚠️ SMTP transporter verification failed:', verifyErr.message);
+    } else {
+      console.warn('⚠️ SMTP transporter verification failed after retries');
       console.warn('ℹ️ Server will continue to run. Email sending may fail until SMTP connectivity is restored.');
-      console.warn('ℹ️ To skip verification in development set SKIP_SMTP_VERIFY=true in backend/.env');
-      // Do NOT throw here — return false to allow server startup
+      console.warn('ℹ️ To bypass verification entirely in development set SKIP_SMTP_VERIFY=true in backend/.env');
       return false;
     }
   } catch (error) {
@@ -55,6 +104,7 @@ const initTransporter = async () => {
     return false;
   }
 };
+
 
 // Generate a 6-digit OTP
 function generateOTP() {
@@ -132,37 +182,8 @@ async function sendOTPEmail(email, otp, purpose = 'signup', logoUrl = '') {
     
     console.error(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 
-    // Attempt fallback: create an Ethereal test account so emails can still be inspected when SMTP is blocked
-    try {
-      console.log('🔁 Attempting Ethereal fallback to send OTP email (useful for dev/staging)...');
-      const testAccount = await nodemailer.createTestAccount();
-      const etherealTransporter = nodemailer.createTransport({
-        host: testAccount.smtp.host,
-        port: testAccount.smtp.port,
-        secure: testAccount.smtp.secure,
-        auth: {
-          user: testAccount.user,
-          pass: testAccount.pass
-        }
-      });
-
-      const fallbackResult = await etherealTransporter.sendMail({
-        from: `"InvoicePro (Ethereal)" <${testAccount.user}>`,
-        to: email,
-        subject,
-        html: htmlContent,
-        text: plainTextContent
-      });
-
-      const previewUrl = nodemailer.getTestMessageUrl(fallbackResult);
-      console.log('✅ Ethereal fallback email sent. Preview URL:', previewUrl);
-
-      // In development, return the preview URL so frontend/tests can access the message
-      return { success: true, messageId: fallbackResult.messageId, previewUrl };
-    } catch (fallbackErr) {
-      console.error('❌ Ethereal fallback also failed:', fallbackErr.message);
-      return { success: false, error: 'Email delivery failed. Please try again.' };
-    }
+    // no fallback: let the caller handle the failure
+    return { success: false, error: 'Email delivery failed. Please try again.' };
   }
 }
 

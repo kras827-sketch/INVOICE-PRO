@@ -13,7 +13,7 @@ const getTransporter = () => {
   const port = parseInt(process.env.EMAIL_PORT) || 587;
   const secure = port === 465; // true for 465 (SSL), false for 587 (STARTTLS)
 
-  const transporter = nodemailer.createTransport({
+  const options = {
     host: process.env.EMAIL_HOST || 'smtp.gmail.com',
     port,
     secure,
@@ -21,14 +21,20 @@ const getTransporter = () => {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
     },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
+    connectionTimeout: parseInt(process.env.EMAIL_CONN_TIMEOUT) || 30000,
+    greetingTimeout: parseInt(process.env.EMAIL_GREETING_TIMEOUT) || 30000,
+    socketTimeout: parseInt(process.env.EMAIL_SOCKET_TIMEOUT) || 30000,
     // For port 587, use STARTTLS
     ...(!secure && { tls: { rejectUnauthorized: false } }),
-  });
+  };
 
-  console.log(`📧 Configured Invoice Email Service: SMTP (${process.env.EMAIL_HOST || 'smtp.gmail.com'}:${port}, secure: ${secure})`);
+  if (process.env.EMAIL_SERVICE) {
+    options.service = process.env.EMAIL_SERVICE;
+  }
+
+  const transporter = nodemailer.createTransport(options);
+
+  console.log(`📧 Configured Invoice Email Service: SMTP (${options.host}:${port}, secure: ${secure})`);
   return transporter;
 };
 
@@ -97,34 +103,8 @@ exports.sendInvoiceEmail = async (options) => {
   } catch (error) {
     console.error('❌ Invoice email sending error:', error.message);
     console.error('   Code:', error.code || 'N/A');
-
-    // Attempt Ethereal fallback when SMTP fails (helps in dev/staging environments)
-    try {
-      console.log('🔁 Attempting Ethereal fallback to send invoice email...');
-      const testAccount = await nodemailer.createTestAccount();
-      const etherealTransporter = nodemailer.createTransport({
-        host: testAccount.smtp.host,
-        port: testAccount.smtp.port,
-        secure: testAccount.smtp.secure,
-        auth: { user: testAccount.user, pass: testAccount.pass }
-      });
-
-      const fallbackInfo = await etherealTransporter.sendMail({
-        from: process.env.EMAIL_FROM || process.env.EMAIL_USER || testAccount.user,
-        to: email,
-        subject: subject || `Invoice ${invoiceNumber}`,
-        html: htmlContent,
-        attachments: pdfBuffer ? [{ filename: `${invoiceNumber || 'invoice'}.pdf`, content: pdfBuffer }] : undefined
-      });
-
-      const previewUrl = nodemailer.getTestMessageUrl(fallbackInfo);
-      console.log('✅ Ethereal invoice email sent. Preview URL:', previewUrl);
-
-      return { success: true, id: fallbackInfo.messageId, previewUrl };
-    } catch (fallbackErr) {
-      console.error('❌ Ethereal fallback failed:', fallbackErr.message);
-      throw new Error(`Failed to send invoice email: ${error.message}`);
-    }
+    // no fallback – bubble the failure to caller
+    throw new Error(`Failed to send invoice email: ${error.message}`);
   }
 };
 

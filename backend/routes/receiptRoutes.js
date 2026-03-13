@@ -5,9 +5,23 @@
 
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const { protect } = require('../middleware/authMiddleware');
 const receiptService = require('../services/receiptService');
 const Receipt = require('../models/Receipt');
+
+// Configure multer for in-memory file uploads (PDF attachments)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/pdf') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF files are allowed'), false);
+    }
+  }
+});
 
 /**
  * POST /api/receipts/create
@@ -37,8 +51,11 @@ router.post('/create', protect, async (req, res) => {
       receipt.customer.email = email;
     }
 
-    // Send email
-    await receiptService.sendReceiptEmail(receipt, pdfBuffer);
+    // sendEmail flag defaults true
+    const shouldSend = req.body.sendEmail !== false;
+    if (shouldSend) {
+      await receiptService.sendReceiptEmail(receipt, pdfBuffer);
+    }
 
     // Revert to original
     if (email) {
@@ -47,7 +64,7 @@ router.post('/create', protect, async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Receipt created and email sent',
+      message: shouldSend ? 'Receipt created and email sent' : 'Receipt created',
       receipt: {
         _id: receipt._id,
         receiptNumber: receipt.receiptNumber,
@@ -260,7 +277,7 @@ router.post('/:receiptId/resend', protect, async (req, res) => {
  * POST /api/receipts/:receiptId/send
  * Send receipt to specific email (might be different from original)
  */
-router.post('/:receiptId/send', protect, async (req, res) => {
+router.post('/:receiptId/send', protect, upload.single('pdf'), async (req, res) => {
   try {
     const { email } = req.body;
 
@@ -274,7 +291,9 @@ router.post('/:receiptId/send', protect, async (req, res) => {
     const originalEmail = receipt.customer.email;
     receipt.customer.email = email;
 
-    const pdfBuffer = await receiptService.generateReceiptPDF(receipt);
+    // Use the PDF blob from the frontend if provided, otherwise regenerate it on backend
+    const pdfBuffer = req.file ? req.file.buffer : await receiptService.generateReceiptPDF(receipt);
+    
     await receiptService.sendReceiptEmail(receipt, pdfBuffer);
 
     // Revert to original

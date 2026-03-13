@@ -7,6 +7,8 @@ const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/authMiddleware');
 const analyticsService = require('../services/analyticsService');
+const Groq = require('groq-sdk');
+const groq = process.env.GROQ_API_KEY ? new Groq({ apiKey: process.env.GROQ_API_KEY }) : null;
 
 /**
  * GET /api/analytics/overview
@@ -221,9 +223,62 @@ router.get('/export', protect, async (req, res) => {
 // simple support chat endpoint for forecasting assistance
 router.post('/chat', protect, async (req, res) => {
   try {
-    const { message, currency } = req.body || {};
+    const { message, currency, context } = req.body || {};
     const forecast = await analyticsService.getRevenueForecast(req.user._id, 30);
-    const total = forecast?.totalRevenue ?? forecast?.total ?? 0;
+    
+    if (groq) {
+      console.log('🤖 AI Chat Requested. Attempting Groq completion for message:', message);
+      const formatMoney = (amount) => new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: currency || 'NGN'
+      }).format(amount || 0);
+
+      const systemPrompt = `
+You are an elite, highly professional business analyst and financial forecasting expert.
+Your SOLE purpose is to provide business strategies, interpret financial data, analyze revenue, and suggest actionable growth tactics.
+
+STRICT RULES:
+1. ONLY answer questions related to business, finance, revenue tracking, and strategy.
+2. If the user asks about ANY non-business topic (e.g., programming, general trivia, weather), firmly politely refuse and redirect the conversation back to their business metrics.
+3. Keep your advice structured, concise, and professional.
+4. Base your analysis on the live business metrics provided below.
+5. Provide clear, straightforward numbers and risk analysis whenever predicting future trends.
+
+${context || ''}
+
+LIVE METRICS CONTEXT:
+- 30-Day Projected Revenue: ${formatMoney(forecast?.projectedRevenue || forecast?.totalRevenue || 0)}
+- Expected Range: ${formatMoney(forecast?.worstCase || 0)} to ${formatMoney(forecast?.bestCase || 0)}
+- Annual Run Rate: ${formatMoney(forecast?.annualRunRate || 0)}
+- Monthly Growth Rate: ${forecast?.growthRate || 0}%
+- Cash Flow Health: ${forecast?.cashFlowHealth?.toUpperCase() || 'UNKNOWN'}
+- Churn Probability: ${forecast?.churnProbability || 0}%
+- Important Insights: ${Array.isArray(forecast?.seasonalityInsights) ? forecast.seasonalityInsights.join('. ') : forecast?.seasonalityInsights || ''}
+      `;
+
+      try {
+        const chatCompletion = await groq.chat.completions.create({
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: message || "Hello" }
+          ],
+          model: "llama-3.1-8b-instant", 
+        });
+
+        console.log('✅ Groq Response received successfully');
+        const reply = chatCompletion.choices[0]?.message?.content || "I couldn't process that request.";
+        return res.json({ success: true, reply, isStructured: true });
+      } catch (groqError) {
+        console.error('❌ Groq API Error:', groqError.name, groqError.message);
+        if (groqError.status === 401) {
+          console.error('   -> Check if the API key in .env is correct and has no extra spaces.');
+        }
+        throw groqError; // Let the main catch block handle the 500
+      }
+    }
+
+    // Fallback if no GROQ API KEY
+    const total = forecast?.projectedRevenue ?? forecast?.totalRevenue ?? forecast?.total ?? 0;
     const formatted = new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: currency || 'NGN'
@@ -234,6 +289,7 @@ router.post('/chat', protect, async (req, res) => {
       reply += ' The trend has been steadily increasing over the past few months.';
     }
     reply += ' Feel free to ask another question about your numbers!';
+    reply += '\n\n(Note: Add GROQ_API_KEY to your .env to enable the advanced AI assistant!)';
 
     res.json({ success: true, reply });
   } catch (error) {

@@ -192,6 +192,13 @@ exports.downloadPDF = async (req, res) => {
     // Pipe PDF directly to response
     doc.pipe(res);
 
+    // if caller requested a template, print it for visibility
+    const requestedTemplate = req.query.template || invoice.template;
+    if (requestedTemplate) {
+      doc.fontSize(9).fillColor('#999').text(`Template: ${requestedTemplate}`);
+      doc.moveDown(0.5);
+    }
+
     // Header
     doc.fontSize(18).text(invoice.company?.name || 'Invoice', { align: 'left' });
     doc.moveDown(0.25);

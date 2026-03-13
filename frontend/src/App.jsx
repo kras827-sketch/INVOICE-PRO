@@ -20,6 +20,7 @@ import ReceiptVerification from './components/ReceiptVerification';
 import ModernReceiptPreview from './components/ModernReceiptPreview';
 import ReceiptSuccess from './components/ReceiptSuccess';
 import InvoicePDFPreview from './components/InvoicePDFPreview';
+import SendReceipt from './components/SendReceipt';
 
 function App() {
   return (
@@ -42,9 +43,13 @@ function App() {
             <Route path="/invoice/decision" element={<ProtectedRoute><InvoiceDecision /></ProtectedRoute>} />
             <Route path="/invoice/:id" element={<ProtectedRoute><InvoiceViewer /></ProtectedRoute>} />
             <Route path="/invoice/:id/edit" element={<ProtectedRoute><InvoiceForm /></ProtectedRoute>} />
-            <Route path="/invoice/:id/preview" element={<ProtectedRoute><InvoicePDFPreview /></ProtectedRoute>} />
+            {/* invoice viewer/edit/send/receipt routes */}
             <Route path="/invoice/:id/send" element={<ProtectedRoute><SendEmail /></ProtectedRoute>} />
             <Route path="/invoice/:id/receipt-preview" element={<ProtectedRoute><ModernReceiptPreview /></ProtectedRoute>} />
+            {/* send receipt page */}
+            <Route path="/invoice/:id/send-receipt" element={<ProtectedRoute><SendReceipt /></ProtectedRoute>} />
+            {/* PDF preview/download page */}
+            <Route path="/invoice/:id/pdf" element={<ProtectedRoute><InvoicePDFPreview /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/thank-you" element={<ProtectedRoute><ThankYouPage /></ProtectedRoute>} />
             <Route path="/receipt-success" element={<ProtectedRoute><ReceiptSuccess /></ProtectedRoute>} />

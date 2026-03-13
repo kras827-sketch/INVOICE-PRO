@@ -1,67 +1,96 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { ArrowLeft, Download, Mail, QrCode, CheckCircle } from 'lucide-react';
 import api from '../services/api';
 import { formatCurrency } from '../utils/currencyUtils';
 import { toast } from 'react-hot-toast';
+import { INVOICE_TEMPLATES } from '../data/invoiceTemplates';
+import { downloadReceiptPDF, generateReceiptPDFBlob } from '../services/pdfGenerator';
 
 const ModernReceiptPreview = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { isDarkMode } = useTheme();
+  const location = useLocation();
   
-  const [invoice, setInvoice] = useState(null);
-  const [receipt, setReceipt] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [invoice, setInvoice] = useState(location.state?.invoice || null);
+  const [receipt, setReceipt] = useState(location.state?.receipt || null);
+  const [invoiceLoading, setInvoiceLoading] = useState(invoice ? false : true);
+  const [receiptLoading, setReceiptLoading] = useState(receipt ? false : true);
   const [generating, setGenerating] = useState(false);
   const [downloadingPDF, setDownloadingPDF] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [template, setTemplate] = useState('modern-clean');
+
+  const templates = Object.entries(INVOICE_TEMPLATES).map(([id, config]) => ({ id, ...config }));
+
+  const templateConfig = INVOICE_TEMPLATES[template] || INVOICE_TEMPLATES['modern-clean'];
+  const colors = templateConfig.colors;
+
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // Fetch invoice
-        const invRes = await api.get(`/invoices/${id}`);
-        const inv = invRes.data.invoice || invRes.data;
-        setInvoice(inv);
+    // if we were navigated here from dashboard with invoice+receipt available,
+    // we can skip the network roundtrip entirely
+    if (location.state?.invoice && location.state?.receipt) {
+      setInvoice(location.state.invoice);
+      setReceipt(location.state.receipt);
+      setInvoiceLoading(false);
+      setReceiptLoading(false);
+      // initialize template from invoice if provided
+      if (location.state.invoice.template) setTemplate(location.state.invoice.template);
+      return;
+    }
 
-        // Check if receipt already exists for this invoice
-        try {
-          const receiptRes = await api.get(`/receipts`, { params: { invoiceId: id, limit: 1 } });
-          if (receiptRes.data.receipts && receiptRes.data.receipts.length > 0) {
-            setReceipt(receiptRes.data.receipts[0]);
+    const fetchData = async () => {
+      setInvoiceLoading(true);
+      setReceiptLoading(true);
+
+      // start both requests concurrently
+      const invPromise = api.get(`/invoices/${id}`)
+        .then(res => {
+          const inv = res.data.invoice || res.data;
+          setInvoice(inv);
+          if (inv.template) setTemplate(inv.template);
+        })
+        .catch(err => {
+          console.error('Failed to load invoice for receipt preview', err);
+          toast.error('Failed to load invoice');
+          navigate('/dashboard');
+          throw err;
+        })
+        .finally(() => setInvoiceLoading(false));
+
+      const receiptPromise = api.get(`/receipts`, { params: { invoiceId: id, limit: 1 } })
+        .then(res => {
+          if (res.data.receipts && res.data.receipts.length > 0) {
+            setReceipt(res.data.receipts[0]);
           }
-        } catch (err) {
+        })
+        .catch(err => {
           console.log('No existing receipt found');
-        }
-      } catch (err) {
-        console.error('Failed to load invoice for receipt preview', err);
-        toast.error('Failed to load invoice');
-        navigate('/dashboard');
-      } finally {
-        setLoading(false);
-      }
+        })
+        .finally(() => setReceiptLoading(false));
+
+      await Promise.all([invPromise, receiptPromise]);
     };
     if (id) fetchData();
-  }, [id, navigate]);
+  }, [id, navigate, location.state]);
 
-  // Generate receipt: creates receipt + QR + sends email via backend
+  // Generate receipt only (no email); after creation user can review and send manually
   const handleGenerateReceipt = async () => {
     try {
       setGenerating(true);
-      const email = invoice?.client?.email || invoice?.clientEmail;
-      
       const res = await api.post(`/receipts/create`, {
         invoiceId: id,
         paymentMethod: 'bank_transfer',
         paymentDate: new Date().toISOString(),
-        email: email
+        sendEmail: false
       });
 
-      if (res.data.success) {
-        toast.success('Receipt generated and emailed successfully!');
-        // Fetch the newly created receipt to show QR code etc.
+      if (res.data && res.data.success) {
+        toast.success('Receipt generated! You may now preview or send it.');
+        // fetch receipt to show
         try {
           const receiptRes = await api.get(`/receipts`, { params: { invoiceId: id, limit: 1 } });
           if (receiptRes.data.receipts && receiptRes.data.receipts.length > 0) {
@@ -74,7 +103,6 @@ const ModernReceiptPreview = () => {
     } catch (err) {
       console.error('Error generating receipt:', err);
       const msg = err.response?.data?.message || 'Error generating receipt';
-      // If receipt already exists, just fetch it
       if (msg.includes('already exists')) {
         toast.success('Receipt already exists for this invoice');
         try {
@@ -99,17 +127,13 @@ const ModernReceiptPreview = () => {
       if (!receipt?._id) {
         return toast.error('Generate the receipt first before downloading');
       }
-      const apiUrl = import.meta.env.VITE_API_URL || '/api';
-      const downloadUrl = `${apiUrl}/receipts/${receipt._id}/pdf`;
-      
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = `Receipt-${invoice?.invoiceNumber || 'receipt'}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      toast.success('Receipt PDF downloading!');
+      // generate client-side so colour template is honoured
+      await downloadReceiptPDF({
+        ...invoice,
+        ...receipt
+      }, template);
+
+      toast.success('Receipt PDF downloaded!');
     } catch (err) {
       console.error('Error downloading PDF:', err);
       toast.error('Failed to download PDF');
@@ -118,15 +142,30 @@ const ModernReceiptPreview = () => {
     }
   };
 
-  const handleResendEmail = async () => {
+  const handleSendEmail = async () => {
     try {
       setSendingEmail(true);
       if (!receipt?._id) {
         return toast.error('Generate the receipt first before sending email');
       }
 
-      await api.post(`/receipts/${receipt._id}/resend`);
+      const email = invoice?.client?.email || invoice?.clientEmail;
+      
+      const formData = new FormData();
+      formData.append('email', email);
+      
+      // Generate the frontend PDF blob using our lovely template and attach it
+      const pdfBlob = await generateReceiptPDFBlob({ ...invoice, ...receipt }, template);
+      formData.append('pdf', pdfBlob, `Receipt_${receipt.receiptNumber}.pdf`);
+
+      await api.post(`/receipts/${receipt._id}/send`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      
       toast.success('Receipt emailed successfully!');
+      navigate('/receipt-success');
     } catch (err) {
       console.error('Error sending email:', err);
       toast.error(err.response?.data?.message || 'Failed to send email');
@@ -135,12 +174,12 @@ const ModernReceiptPreview = () => {
     }
   };
 
-  if (loading) {
+  if (invoiceLoading) {
     return (
       <div className={`min-h-screen flex items-center justify-center ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
         <div className="text-center">
           <div className="modern-spinner spinner-lg spinner-glow mx-auto mb-4"></div>
-          <p className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>Loading receipt...</p>
+          <p className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>Loading invoice...</p>
         </div>
       </div>
     );
@@ -157,10 +196,10 @@ const ModernReceiptPreview = () => {
             Receipt preview is only available after the invoice is marked as paid.
           </p>
           <button
-            onClick={() => navigate('/dashboard')}
+            onClick={() => navigate(-1)}
             className="bg-brand-emerald text-white px-6 py-3 rounded-lg hover:bg-emerald-700 transition"
           >
-            Back to Dashboard
+            Back
           </button>
         </div>
       </div>
@@ -187,11 +226,31 @@ const ModernReceiptPreview = () => {
       </div>
 
       <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* template selector */}
+        <div className="mb-6">
+          <h3 className={`font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Receipt Style</h3>
+          <div className="flex gap-2 flex-wrap">
+            {templates.map(t => (
+              <button
+                key={t.id}
+                onClick={() => setTemplate(t.id)}
+                style={{
+                  borderColor: template === t.id ? t.colors.primary : 'transparent',
+                  backgroundColor: template === t.id ? t.colors.accent : 'transparent'
+                }}
+                className="px-3 py-1 rounded-lg text-sm border-2 transition"
+              >
+                {t.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Modern Receipt Card */}
         <div className={`rounded-2xl shadow-2xl overflow-hidden ${isDarkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border-0'}`}>
           
           {/* Header Stripe */}
-          <div className="h-2 bg-gradient-to-r from-brand-emerald via-emerald-500 to-brand-emerald"></div>
+          <div className="h-2" style={{ backgroundColor: colors.primary }}></div>
 
           {/* Content */}
           <div className="p-8 sm:p-12">
@@ -199,9 +258,9 @@ const ModernReceiptPreview = () => {
             {/* Status Badge */}
             <div className="flex items-center justify-center mb-8">
               <div className="relative">
-                <div className="absolute inset-0 bg-green-100 dark:bg-emerald-900/30 rounded-full blur-lg"></div>
-                <div className={`relative w-16 h-16 rounded-full flex items-center justify-center ${isDarkMode ? 'bg-emerald-900/50' : 'bg-green-50'} border-2 border-brand-emerald`}>
-                  <CheckCircle className="w-8 h-8 text-brand-emerald" />
+                <div className="absolute inset-0 rounded-full blur-lg" style={{ backgroundColor: colors.accent, opacity: 0.3 }}></div>
+                <div className={`relative w-16 h-16 rounded-full flex items-center justify-center ${isDarkMode ? '' : ''}`} style={{ backgroundColor: isDarkMode ? `${colors.primary}50` : `${colors.accent}` , borderColor: colors.primary, borderWidth: 2 }}>
+                  <CheckCircle className="w-8 h-8" style={{ color: colors.primary }} />
                 </div>
               </div>
             </div>
@@ -268,7 +327,7 @@ const ModernReceiptPreview = () => {
                     <p className={`text-xs uppercase tracking-wider ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
                       Total
                     </p>
-                    <p className={`text-3xl font-bold text-brand-emerald`}>
+                    <p className={`text-3xl font-bold`} style={{ color: colors.primary }}>
                       {formatCurrency(invoice.total, invoice.currency)}
                     </p>
                   </div>
@@ -277,8 +336,8 @@ const ModernReceiptPreview = () => {
                       Status
                     </p>
                     <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-brand-emerald"></div>
-                      <span className={`text-base font-medium text-brand-emerald`}>Paid</span>
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: colors.primary }}></div>
+                      <span className={`text-base font-medium`} style={{ color: colors.primary }}>Paid</span>
                     </div>
                   </div>
                 </div>
@@ -381,19 +440,24 @@ const ModernReceiptPreview = () => {
             </div>
 
             {/* Action Buttons */}
-            {!receipt ? (
+            {receiptLoading ? (
+              <div className="flex justify-center py-12">
+                <div className="modern-spinner spinner-lg spinner-glow"></div>
+                <p className={`ml-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Loading receipt...</p>
+              </div>
+            ) : !receipt ? (
               /* No receipt yet — show Generate Receipt button */
               <button
                 onClick={handleGenerateReceipt}
                 disabled={generating}
-                className="w-full flex items-center justify-center gap-2 bg-brand-emerald hover:bg-emerald-700 text-white py-4 rounded-xl font-semibold transition disabled:opacity-70 text-lg"
+                className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-brand-emerald to-blue-500 hover:from-brand-emerald-dark hover:to-blue-600 text-white py-4 rounded-xl font-semibold transition disabled:opacity-70 text-lg"
               >
                 {generating ? (
                   <div className="modern-spinner spinner-sm spinner-white"></div>
                 ) : (
                   <CheckCircle className="w-5 h-5" />
                 )}
-                {generating ? 'Generating Receipt...' : 'Generate Receipt & Send Email'}
+                {generating ? 'Generating...' : 'Generate Receipt'}
               </button>
             ) : (
               /* Receipt exists — show Download + Resend buttons */
@@ -412,7 +476,7 @@ const ModernReceiptPreview = () => {
                 </button>
 
                 <button
-                  onClick={handleResendEmail}
+                  onClick={handleSendEmail}
                   disabled={sendingEmail}
                   className="w-full flex items-center justify-center gap-2 bg-gray-600 hover:bg-gray-700 text-white py-3 rounded-xl font-semibold transition disabled:opacity-70"
                 >

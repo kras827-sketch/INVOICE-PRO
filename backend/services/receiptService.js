@@ -273,41 +273,116 @@ exports.sendReceiptEmail = async (receipt, pdfBuffer) => {
     const htmlContent = `
       <!doctype html>
       <html>
-      <body style="font-family: Inter,Segoe UI, Tahoma, sans-serif; background:#f8fafc; padding:20px;">
-        <div style="max-width:650px;margin:0 auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 6px 18px rgba(15,23,42,0.06);">
-          <div style="background:${business && business.color ? business.color : '#0F172A'};color:#fff;padding:16px 20px;font-weight:700;">
-            ${business.name || 'Payment Receipt'}
-          </div>
-          <div style="padding:20px;">
-            <h2 style="margin:0 0 8px 0;color:#0F172A;">Receipt ${receipt.receiptNumber}</h2>
-            <p style="color:#334155;margin:0 0 12px 0;">Hello ${receipt.customer?.name || 'Customer'},</p>
-            <p style="color:#334155;margin:0 0 12px 0;">Thank you for your payment. A receipt has been attached to this email.</p>
+      <body style="font-family: Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Tahoma, sans-serif; background:#f4f4f5; padding:24px 12px; margin: 0; min-height: 100vh;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto; max-width: 600px; background:#ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);">
+          <tr>
+            <td style="padding: 0;">
+              <!-- Top Stripe -->
+              <div style="height: 6px; background: ${business?.color || '#059669'}; width: 100%;"></div>
 
-            <table style="width:100%;border-collapse:collapse;margin:14px 0;">
-              <thead>
-                <tr style="background:#f1f5f9;">
-                  <th style="padding:10px;text-align:left;border-bottom:2px solid #e5e7eb;">Description</th>
-                  <th style="padding:10px;text-align:center;border-bottom:2px solid #e5e7eb;">Qty</th>
-                  <th style="padding:10px;text-align:right;border-bottom:2px solid #e5e7eb;">Rate</th>
-                  <th style="padding:10px;text-align:right;border-bottom:2px solid #e5e7eb;">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${itemsHtml}
-              </tbody>
-            </table>
+              <div style="padding: 40px 32px;">
+                <!-- Header / Logo Area -->
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 32px;">
+                  <tr>
+                    <td align="center">
+                      <!-- Success Checkmark -->
+                      <div style="width: 64px; height: 64px; border-radius: 50%; background: ${business?.color ? business.color + '15' : '#dcfce7'}; border: 2px solid ${business?.color || '#059669'}; display: inline-block; text-align: center; line-height: 60px; margin-bottom: 20px;">
+                        <span style="color: ${business?.color || '#059669'}; font-size: 32px; font-weight: bold;">&#10003;</span>
+                      </div>
+                      <h1 style="margin: 0 0 8px 0; color: #0f172a; font-size: 28px; font-weight: 800; letter-spacing: -0.5px;">PAYMENT CONFIRMED</h1>
+                      <p style="margin: 0; color: #64748b; font-size: 15px;">Transaction completed successfully</p>
+                    </td>
+                  </tr>
+                </table>
 
-            <div style="text-align:right;margin-top:8px;">
-              <p style="margin:4px 0;">Subtotal: <strong>${receipt.currency || 'NGN'} ${(receipt.subtotal || 0).toLocaleString()}</strong></p>
-              ${receipt.taxAmount ? `<p style="margin:4px 0;">Tax: ${receipt.currency || 'NGN'} ${(receipt.taxAmount || 0).toLocaleString()}</p>` : ''}
-              ${receipt.discount ? `<p style="margin:4px 0;color:#ef4444;">Discount: -${receipt.currency || 'NGN'} ${(receipt.discount || 0).toLocaleString()}</p>` : ''}
-              <h3 style="color:#0F172A;margin:8px 0;">Total Paid: ${receipt.currency || 'NGN'} ${(receipt.totalPaid || 0).toLocaleString()}</h3>
-            </div>
+                <div style="height: 1px; background: #e2e8f0; margin-bottom: 32px; width: 100%;"></div>
 
-            <p style="margin-top:18px;color:#334155;">If you have questions, reply to this email and we'll help.</p>
-          </div>
-          <div style="background:#f8fafc;padding:14px;text-align:center;color:#64748b;font-size:12px;">Sent via InvoicePro</div>
-        </div>
+                <!-- Two Column Details -->
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 32px;">
+                  <tr>
+                    <td width="50%" valign="top" style="padding-right: 16px;">
+                      <p style="margin: 0 0 12px 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Receipt Details</p>
+                      
+                      <p style="margin: 0 0 4px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b;">Receipt Number</p>
+                      <p style="margin: 0 0 16px 0; font-size: 14px; font-weight: 600; color: ${business?.color || '#059669'};">${receipt.receiptNumber}</p>
+                      
+                      <p style="margin: 0 0 4px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b;">Date Paid</p>
+                      <p style="margin: 0 0 0 0; font-size: 14px; font-weight: 500; color: #334155;">${new Date(receipt.paymentDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                    </td>
+                    <td width="50%" valign="top" style="padding-left: 16px;">
+                      <p style="margin: 0 0 12px 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Amount Paid</p>
+                      
+                      <p style="margin: 0 0 4px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b;">Total</p>
+                      <p style="margin: 0 0 16px 0; font-size: 28px; font-weight: 800; color: ${business?.color || '#059669'}; letter-spacing: -0.5px;">${receipt.currency || 'NGN'} ${(receipt.totalPaid || 0).toLocaleString()}</p>
+                      
+                      <p style="margin: 0 0 4px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b;">Status</p>
+                      <p style="margin: 0; font-size: 14px; font-weight: 600; color: #059669;">&#9679; Paid</p>
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- Customer Details Card -->
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background: #f8fafc; border-radius: 12px; margin-bottom: 32px;">
+                  <tr>
+                    <td style="padding: 24px;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                        <tr>
+                          <td width="50%" valign="top" style="padding-right: 16px;">
+                            <p style="margin: 0 0 8px 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">From</p>
+                            <p style="margin: 0 0 4px 0; font-size: 15px; font-weight: 600; color: #0f172a;">${business?.name || 'Business Name'}</p>
+                            <p style="margin: 0; font-size: 13px; color: #64748b;">${business?.email || ''}</p>
+                          </td>
+                          <td width="50%" valign="top" style="padding-left: 16px;">
+                            <p style="margin: 0 0 8px 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">To</p>
+                            <p style="margin: 0 0 4px 0; font-size: 15px; font-weight: 600; color: #0f172a;">${receipt.customer?.name || 'Customer'}</p>
+                            <p style="margin: 0; font-size: 13px; color: #64748b;">${receipt.customer?.email || ''}</p>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- Items Breakdown -->
+                <p style="margin: 0 0 16px 0; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #64748b;">Order Summary</p>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 32px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+                  <thead style="background: #f8fafc;">
+                    <tr>
+                      <th align="left" style="padding: 12px 16px; font-size: 12px; font-weight: 600; color: #475569; border-bottom: 1px solid #e2e8f0;">Item</th>
+                      <th align="center" style="padding: 12px 16px; font-size: 12px; font-weight: 600; color: #475569; border-bottom: 1px solid #e2e8f0; width: 40px;">Qty</th>
+                      <th align="right" style="padding: 12px 16px; font-size: 12px; font-weight: 600; color: #475569; border-bottom: 1px solid #e2e8f0;">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${itemsHtml}
+                  </tbody>
+                </table>
+
+                <!-- Message -->
+                <p style="margin: 0 0 32px 0; font-size: 14px; line-height: 1.6; color: #475569; text-align: center;">
+                  Thank you for your business. A detailed PDF receipt has been attached to this email for your records. If you have any questions, please reply to this email.
+                </p>
+
+                <div style="height: 1px; background: #e2e8f0; margin-bottom: 32px; width: 100%;"></div>
+
+                <!-- Footer -->
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td align="center">
+                      <p style="margin: 0 0 8px 0; font-size: 12px; color: #94a3b8;">
+                        &copy; ${new Date().getFullYear()} ${business?.name || 'Business'}. All rights reserved.
+                      </p>
+                      <p style="margin: 0; font-size: 11px; color: #cbd5e1;">
+                        Powered securely by InvoicePro
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+
+              </div>
+            </td>
+          </tr>
+        </table>
       </body>
       </html>
     `;
@@ -349,7 +424,10 @@ exports.getReceipt = async (receiptId, userId) => {
       throw new Error('Receipt not found');
     }
 
-    if (receipt.user.toString() !== userId) {
+    const receiptUserId = receipt.user?._id ? receipt.user._id.toString() : receipt.user?.toString();
+    const requestUserId = userId?._id ? userId._id.toString() : userId?.toString();
+    
+    if (receiptUserId !== requestUserId) {
       throw new Error('Unauthorized');
     }
 

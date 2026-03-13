@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Download, X } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
-import api from '../services/api';
 import { toast } from 'react-hot-toast';
 import { PDFViewer } from '@react-pdf/renderer';
-import { PDFInvoice } from '../services/pdfGenerator';
+import { PDFInvoice, downloadInvoicePDF } from '../services/pdfGenerator';
 import { INVOICE_TEMPLATES } from '../data/invoiceTemplates';
+import api from '../services/api';
 
 const templates = Object.entries(INVOICE_TEMPLATES).map(([id, config]) => ({ id, ...config }));
 
@@ -38,26 +38,20 @@ const InvoicePDFPreview = () => {
   }, [id, navigate]);
 
   const handleDownload = async () => {
+    if (!invoice) return;
+
     try {
       setDownloading(true);
-      // Create a link to download the PDF
-      const apiUrl = import.meta.env.VITE_API_URL || '/api';
-      const downloadUrl = `${apiUrl}/invoices/pdf/${id}?template=${template}`;
-      
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = `Invoice-${invoice.invoiceNumber}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
+      // rely on frontend logic so chosen template is honored
+      await downloadInvoicePDF(invoice, template);
+
       toast.success('Invoice PDF downloaded successfully!');
-      // Redirect to thank you page
-      navigate('/thank-you', { 
-        state: { 
+      // redirect after download
+      navigate('/thank-you', {
+        state: {
           invoiceNumber: invoice.invoiceNumber,
           message: 'Your invoice PDF has been downloaded.'
-        } 
+        }
       });
     } catch (err) {
       console.error('Error downloading PDF:', err);
@@ -72,7 +66,7 @@ const InvoicePDFPreview = () => {
       <div className={`min-h-screen flex items-center justify-center ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
         <div className="text-center">
           <div className="modern-spinner spinner-lg spinner-glow mx-auto mb-4"></div>
-          <p className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>Loading invoice preview...</p>
+          <p className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>Loading Download PDF...</p>
         </div>
       </div>
     );
@@ -87,7 +81,7 @@ const InvoicePDFPreview = () => {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button 
-              onClick={() => navigate(`/invoice/${id}`)}
+              onClick={() => navigate(-1)}
               className={`p-2 rounded-full transition ${isDarkMode ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-100 text-gray-600'}`}
             >
               <ArrowLeft className="w-5 h-5" />
@@ -103,7 +97,7 @@ const InvoicePDFPreview = () => {
           </div>
           <div className="flex items-center gap-3">
             <button
-              onClick={() => navigate(`/invoice/${id}`)}
+              onClick={() => navigate(-1)}
               disabled={downloading}
               className={`px-4 py-2 rounded-lg font-medium transition ${
                 isDarkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'

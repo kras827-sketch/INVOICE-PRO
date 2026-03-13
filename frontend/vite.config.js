@@ -18,7 +18,7 @@ export default defineConfig({
   },
   build: {
     // Production build configuration
-    outDir: '../public',
+    outDir: 'dist',
     sourcemap: false,
     chunkSizeWarningLimit: 1000,
     rollupOptions: {

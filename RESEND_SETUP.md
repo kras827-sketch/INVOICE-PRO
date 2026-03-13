@@ -29,7 +29,12 @@ cd backend
 npm run dev
 ```
 
-You should see logs indicating SMTP is configured (e.g., `Configured Invoice Email Service: SMTP (gmail)`).
+You should see logs indicating SMTP is configured (e.g., `Configured Invoice Email Service: SMTP (gmail):587`).
+
+> **New configuration options (optional)**
+> - `EMAIL_SERVICE` – provider name for nodemailer (e.g. `gmail`, `hotmail`).
+> - `EMAIL_CONN_TIMEOUT`, `EMAIL_GREETING_TIMEOUT`, `EMAIL_SOCKET_TIMEOUT` – override default 30‑second timeouts used by Nodemailer.
+> - `SMTP_VERIFY_RETRIES` – number of verification attempts during initialization (default 3). Useful when network is flaky.
 
 ## 🧪 Verify SMTP Setup
 
@@ -78,6 +83,11 @@ Expected output:
 - "SMTP credentials missing": Ensure `EMAIL_USER` and `EMAIL_PASS` are set in `backend/.env`.
 - Gmail authentication failures: use an App Password, or configure OAuth for production.
 - Emails marked as spam: set proper `EMAIL_FROM` and consider using a verified SMTP provider.
+- Outbound SMTP blocked / network timeout (e.g. ETIMEDOUT):
+  - Set `SKIP_SMTP_VERIFY=true` in `backend/.env` to bypass the startup verification check and allow the app to run while you troubleshoot.
+  - You can also tune the verification by setting `SMTP_VERIFY_RETRIES` (e.g. `3`) and raising timeouts (`EMAIL_CONN_TIMEOUT=60000`).
+  - The server will still start, **but emails won’t be delivered until connectivity is restored.**
+  - Fix your firewall or choose a reachable provider/port; there is no automatic fallback.
 
 ## 📞 Helpful Links
 

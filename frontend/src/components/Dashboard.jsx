@@ -1,7 +1,7 @@
 // src/components/Dashboard.jsx
 // Main dashboard with invoice statistics and list
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -14,6 +14,7 @@ import { formatCurrency, CURRENCIES } from '../utils/currencyUtils';
 import { generatePDFBlob } from '../services/pdfGenerator';
 import { generateInvoiceEmailHTML } from '../services/emailTemplates';
 import { RefreshCw } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { toast } from 'react-hot-toast';
 
 const Dashboard = () => {
@@ -27,12 +28,17 @@ const Dashboard = () => {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [subscription, setSubscription] = useState({ plan: 'free' });
   const [activeActionPanel, setActiveActionPanel] = useState(null);
+  const [panelPosition, setPanelPosition] = useState(null);
+  // id/type to show spinner when an action is initiating
+  const [loadingAction, setLoadingAction] = useState({ invoiceId: null, type: null });
+  const panelRef = useRef(null); // for click‑outside detection
+
   // determine if we're on a small screen for mobile layout
   const [isMobileView, setIsMobileView] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
 
   // action panel renderer (shared mobile/desktop)
   const renderActionPanel = (invoice) => (
-    <div className={`absolute right-0 mt-2 w-56 rounded-xl shadow-2xl border overflow-hidden z-30 ${
+    <div ref={panelRef} className={`w-56 rounded-xl shadow-2xl border overflow-hidden z-1000 ${
         isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
       }`}>
       <div className={`px-4 py-2.5 border-b ${isDarkMode ? 'border-gray-700 bg-gray-750' : 'border-gray-100 bg-gray-50'}`}>
@@ -43,7 +49,7 @@ const Dashboard = () => {
 
       <div className="p-2 space-y-1">
         <button
-          onClick={() => { setActiveActionPanel(null); navigate(`/invoice/${invoice._id}`); }}
+          onClick={(e) => { e.stopPropagation(); setActiveActionPanel(null); navigate(`/invoice/${invoice._id}`); }}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all
             ${isDarkMode ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}
         >
@@ -52,7 +58,7 @@ const Dashboard = () => {
         </button>
 
         <button
-          onClick={() => { setActiveActionPanel(null); navigate(`/invoice/${invoice._id}/edit`); }}
+          onClick={(e) => { e.stopPropagation(); setActiveActionPanel(null); navigate(`/invoice/${invoice._id}/edit`); }}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all
             ${isDarkMode ? 'bg-indigo-500 hover:bg-indigo-600 text-white' : 'bg-indigo-500 hover:bg-indigo-600 text-white'}`}
         >
@@ -60,7 +66,7 @@ const Dashboard = () => {
           Edit Invoice
         </button>
         <button
-          onClick={() => { setActiveActionPanel(null); handleSendEmail(invoice._id); }}
+          onClick={(e) => { e.stopPropagation(); setActiveActionPanel(null); handleSendEmail(invoice._id); }}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all
             ${isDarkMode ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}
         >
@@ -72,7 +78,7 @@ const Dashboard = () => {
 
         {invoice.status !== 'paid' ? (
           <button
-            onClick={() => handleMarkPaid(invoice._id)}
+            onClick={(e) => { e.stopPropagation(); handleMarkPaid(invoice._id); }}
             disabled={markingPaid === invoice._id}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
               markingPaid === invoice._id ? 'opacity-60 cursor-not-allowed' : ''
@@ -86,46 +92,54 @@ const Dashboard = () => {
             {markingPaid === invoice._id ? 'Marking...' : 'Mark as Paid'}
           </button>
         ) : (
-          <> 
-            <button
-              onClick={() => { setActiveActionPanel(null); navigate(`/invoice/${invoice._id}/receipt-preview`); }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all
-                ${isDarkMode ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}
-            >
-              <FileText className="h-4 w-4" />
-              Generate Receipt
-            </button>
-            <button
-              onClick={() => { setActiveActionPanel(null); handleSendReceipt(invoice._id); }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all
-                ${isDarkMode ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}
-            >
-              <Mail className="h-4 w-4" />
-              Send Receipt
-            </button>
-          </>
+          /* paid invoices: only show send receipt button */
+          <button
+            onClick={(e) => { e.stopPropagation(); handleSendReceipt(invoice); }}
+            disabled={loadingAction.invoiceId === invoice._id && loadingAction.type === 'receipt'}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all
+              bg-gradient-to-r from-brand-emerald to-blue-500 hover:from-brand-emerald-dark hover:to-blue-600 text-white
+              shadow-lg ${
+                loadingAction.invoiceId === invoice._id && loadingAction.type === 'receipt' ? 'opacity-60 cursor-not-allowed' : ''
+              }`}
+          >
+            <FileText className="h-4 w-4" />
+            <span>{loadingAction.invoiceId === invoice._id && loadingAction.type === 'receipt' ? 'Loading receipt...' : 'Send Receipt'}</span>
+            {loadingAction.invoiceId === invoice._id && loadingAction.type === 'receipt' && (
+              <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+              </svg>
+            )}
+          </button>
         )}
 
         <button
-          onClick={() => {
-            setActiveActionPanel(null);
-            if (typeof window !== 'undefined') {
-              const apiUrl = import.meta.env.VITE_API_URL || '/api';
-              window.open(`${apiUrl}/invoices/pdf/${invoice._id}`, '_blank');
-            }
-          }}
+          onClick={(e) => { e.stopPropagation(); handleDownloadPDF(invoice); }}
+          disabled={loadingAction.invoiceId === invoice._id && loadingAction.type === 'pdf'}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
             isDarkMode ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-50 text-gray-700'
+          } ${
+            loadingAction.invoiceId === invoice._id && loadingAction.type === 'pdf' ? 'opacity-60 cursor-not-allowed' : ''
           }`}
         >
           <Download className="h-4 w-4 text-green-500" />
-          Download PDF
+          {loadingAction.invoiceId === invoice._id && loadingAction.type === 'pdf' ? (
+              <>
+                <span>Loading PDF...</span>
+                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                </svg>
+              </>
+            ) : (
+              <span>Download PDF</span>
+            )}
         </button>
 
         <div className={`border-t my-1 ${isDarkMode ? 'border-gray-700' : 'border-gray-100'}`}></div>
 
         <button
-          onClick={() => handleDelete(invoice._id)}
+          onClick={(e) => { e.stopPropagation(); handleDelete(invoice._id); }}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
             isDarkMode ? 'hover:bg-red-900/30 text-red-400' : 'hover:bg-red-50 text-red-600'
           }`}
@@ -187,10 +201,9 @@ const Dashboard = () => {
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (activeActionPanel) {
-        const actionPanel = document.querySelector('.action-panel-container');
         const actionButton = e.target.closest('[data-action-button]');
-        
-        if (!actionPanel?.contains(e.target) && !actionButton) {
+        if (panelRef.current && panelRef.current.contains(e.target)) return;
+        if (!actionButton) {
           setActiveActionPanel(null);
         }
       }
@@ -201,6 +214,7 @@ const Dashboard = () => {
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [activeActionPanel]);
+
 
   const loadInvoices = async (showLoading = true) => {
     try {
@@ -268,6 +282,8 @@ const Dashboard = () => {
   };
 
   const handleMarkPaid = async (id) => {
+    // close menu while action runs
+    setActiveActionPanel(null);
     try {
       setMarkingPaid(id);
       await api.put(`/invoices/${id}/mark-paid-only`);
@@ -290,24 +306,31 @@ const Dashboard = () => {
     navigate(`/invoice/${invoiceId}/send`);
   };
 
-  const handleSendReceipt = async (invoiceId) => {
-    try {
-      const res = await api.get(`/invoices/${invoiceId}`);
-      const fetchedInvoice = res.data.invoice || res.data;
-      if (fetchedInvoice.status !== 'paid') {
-        return toast.error('Invoice must be marked paid before sending receipt');
-      }
-      const email = fetchedInvoice.client?.email || fetchedInvoice.clientEmail;
-      if (!email) {
-        return toast.error('No client email available');
-      }
-      await api.post('/receipts/create', { invoiceId, email });
-      toast.success('Receipt generated and emailed successfully');
-    } catch (err) {
-      console.error('Error sending receipt:', err);
-      toast.error(err.response?.data?.message || err.message || 'Failed to send receipt');
-    }
+  // navigate to pdf preview page
+  const handleDownloadPDF = async (invoice) => {
+    // close panel and start spinner
+    setActiveActionPanel(null);
+    setLoadingAction({ invoiceId: invoice._id, type: 'pdf' });
+    // small pause to render spinner before route change
+    await new Promise(res => setTimeout(res, 100));
+    navigate(`/invoice/${invoice._id}/pdf`);
   };
+
+  // navigate straight to the send‑receipt page; the page itself will
+  // handle creating/fetching the receipt. doing this keeps the UI snappy
+  // and avoids briefly landing on the generic invoice viewer.
+  const handleSendReceipt = (invoice) => {
+    setActiveActionPanel(null);
+    // show button spinner while route change is in progress
+    setLoadingAction({ invoiceId: invoice._id, type: 'receipt' });
+
+    // small pause to allow spinner to render before unmounting
+    setTimeout(() => {
+      navigate(`/invoice/${invoice._id}/send-receipt`, { state: { invoice } });
+      // final clearing happens on the new page or when dashboard unmounts
+    }, 150);
+  };
+
 
   const getStatusColor = (status) => {
     const colors = {
@@ -651,22 +674,43 @@ const Dashboard = () => {
                   <div className="mt-2 flex justify-between items-center">
                     <p className={`${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>{formatCurrency(inv.total, inv.currency)}</p>
                     <button
-                      onClick={(e) => { e.stopPropagation(); setActiveActionPanel(activeActionPanel === inv._id ? null : inv._id); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const id = inv._id;
+                        if (activeActionPanel === id) {
+                          setActiveActionPanel(null);
+                          setPanelPosition(null);
+                        } else {
+                          setActiveActionPanel(id);
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          let leftPos = rect.left + window.scrollX;
+                          const panelWidth = 224; // slightly less than w-56
+                          if (leftPos + panelWidth > window.innerWidth) {
+                            leftPos = window.innerWidth - panelWidth - 16; // 16px margin
+                          }
+                          setPanelPosition({
+                            top: rect.bottom + window.scrollY,
+                            left: leftPos
+                          });
+                        }
+                      }}
                       data-action-button
-                      className={`flex items-center gap-1 px-4 py-2 rounded-full text-sm font-semibold shadow-md transition-all
-                        bg-brand-emerald text-white
-                        hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-400`}
-                      title="Actions"
+                      className={`p-2 rounded-lg shadow-sm transition transform active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-400
+                        ${isDarkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'}
+                        ${activeActionPanel === inv._id ? 'ring-2 ring-emerald-400' : ''}`}
+                      title="Actions menu"
                     >
-                      {activeActionPanel === inv._id ? <X className="h-5 w-5" /> : <MoreVertical className="h-5 w-5" />}
-                      <span>Actions</span>
+                      {activeActionPanel === inv._id ? <X className="h-5 w-5 text-current" /> : <MoreVertical className="h-5 w-5 text-current" />}
+                      <span className="sr-only">Open actions</span>
                     </button>
-                  {activeActionPanel === inv._id && (
-                    <div className="relative action-panel-container">
-                      {renderActionPanel(inv)}
-                    </div>
-                  )
-                  }
+                    {activeActionPanel === inv._id && panelPosition && (
+                      createPortal(
+                        <div style={{ position: 'fixed', top: panelPosition.top, left: panelPosition.left }}>
+                          {renderActionPanel(inv)}
+                        </div>,
+                        document.body
+                      )
+                    )}
                   </div>
                 </div>
               ))}
@@ -705,24 +749,63 @@ const Dashboard = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="relative action-panel-container">
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); setActiveActionPanel(activeActionPanel === invoice._id ? null : invoice._id); }} 
-                            data-action-button
-                            className={`flex items-center gap-1 px-4 py-2 rounded-full text-sm font-semibold shadow-md transition-all
-                              bg-brand-emerald text-white
-                              hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-400`}
-                            title="Actions"
-                          >
-                            {activeActionPanel === invoice._id ? <X className="h-5 w-5" /> : <MoreVertical className="h-5 w-5" />}
-                            <span>Actions</span>
-                          </button>
-
-                          {activeActionPanel === invoice._id && (
-                            <div className="relative action-panel-container">
-                              {renderActionPanel(invoice)}
-                            </div>
+                        <div className="flex items-center space-x-2">
+                          {invoice.status !== 'paid' && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMarkPaid(invoice._id);
+                              }}
+                              disabled={markingPaid === invoice._id}
+                              className={`text-xs px-2 py-1 rounded-full font-semibold transition ${
+                                markingPaid === invoice._id ? 'opacity-60 cursor-not-allowed' : ''
+                              } ${isDarkMode ? 'bg-emerald-700 hover:bg-emerald-800 text-white' : 'bg-emerald-500 hover:bg-emerald-600 text-white'}`}
+                            >
+                              {markingPaid === invoice._id ? 'Marking…' : 'Mark Paid'}
+                            </button>
                           )}
+
+                          <div className="relative action-panel-container">
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const id = invoice._id;
+                                if (activeActionPanel === id) {
+                                  setActiveActionPanel(null);
+                                  setPanelPosition(null);
+                                } else {
+                                  setActiveActionPanel(id);
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  let leftPos = rect.left + window.scrollX;
+                                  const panelWidth = 224;
+                                  if (leftPos + panelWidth > window.innerWidth) {
+                                    leftPos = window.innerWidth - panelWidth - 16;
+                                  }
+                                  setPanelPosition({
+                                    top: rect.bottom + window.scrollY,
+                                    left: leftPos
+                                  });
+                                }
+                              }} 
+                              data-action-button
+                              className={`p-2 rounded-lg shadow-sm transition transform active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-400
+                                ${isDarkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'}
+                                ${activeActionPanel === invoice._id ? 'ring-2 ring-emerald-400' : ''}`}
+                              title="Actions menu"
+                            >
+                              {activeActionPanel === invoice._id ? <X className="h-5 w-5 text-current" /> : <MoreVertical className="h-5 w-5 text-current" />}
+                              <span className="sr-only">Open actions</span>
+                            </button>
+
+                            {activeActionPanel === invoice._id && panelPosition && (
+                              createPortal(
+                                <div style={{ position: 'fixed', top: panelPosition.top, left: panelPosition.left, zIndex: 1000 }}>
+                                  {renderActionPanel(invoice)}
+                                </div>,
+                                document.body
+                              )
+                            )}
+                          </div>
                         </div>
                       </td>
                     </tr>

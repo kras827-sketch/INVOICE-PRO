@@ -596,6 +596,27 @@ const Analytics = () => {
                     icon={ShieldAlert}
                     color={data.forecast.churnProbability < 20 ? 'green' : data.forecast.churnProbability < 50 ? 'orange' : 'purple'}
                   />
+                  {/* New Feature 1: YoY Growth Velocity */}
+                  <KPICard
+                    label="YoY Growth Velocity"
+                    value={`${(data.forecast.growthRate * 12).toFixed(1)}%`}
+                    icon={TrendingUp}
+                    color={(data.forecast.growthRate * 12) >= 0 ? 'green' : 'orange'}
+                  />
+                  {/* New Feature 2: Cash Flow Gap Prediction */}
+                  <KPICard
+                    label="Avg Cash Flow Gap"
+                    value={`${data.payment_behaviour?.averagePaymentDelay || 0} Days`}
+                    icon={Clock}
+                    color={data.payment_behaviour?.averagePaymentDelay > 14 ? 'orange' : 'blue'}
+                  />
+                  {/* New Feature 3: Expense Burn Rate (Est) */}
+                  <KPICard
+                    label="Est. Burn Rate / Mo"
+                    value={formatCurrency(data.overview?.totalRevenue * 0.4 || 0, currency)}
+                    icon={Activity}
+                    color="purple"
+                  />
                 </div>
 
                 <div className={`rounded-xl p-6 ${isDarkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'} shadow-lg`}>
@@ -622,8 +643,61 @@ const Analytics = () => {
                 {/* AI chat assistant below chart */}
                 <ChatWidget currency={currency} isDarkMode={isDarkMode} />
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* New Feature 4, 5, 6: LTV, Concentration, Upsell */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {/* LTV & Concentration Risk */}
                   <div className={`rounded-xl p-6 ${isDarkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'} shadow-lg`}>
+                     <h3 className={`text-sm font-bold uppercase tracking-wide mb-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      Client Portfolio Risk
+                    </h3>
+                    <div className="space-y-4">
+                      {data.top_customers && data.top_customers.length > 0 ? (
+                        <>
+                          <div className={`p-3 rounded-lg flex items-center justify-between ${isDarkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
+                            <span className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}>Est. Avg LTV:</span>
+                            <span className={`font-bold ${isDarkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                              {formatCurrency(
+                                data.top_customers.reduce((sum, c) => sum + c.totalSpent, 0) / data.top_customers.length,
+                                currency
+                              )}
+                            </span>
+                          </div>
+                          <div className={`p-3 rounded-lg flex items-center justify-between ${isDarkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
+                            <span className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}>Top Client Dependency:</span>
+                            <span className={`font-bold ${
+                              (data.top_customers[0]?.totalSpent / Math.max(1, data.overview?.totalRevenue)) > 0.4 ? 'text-red-500' : isDarkMode ? 'text-emerald-400' : 'text-emerald-600'
+                            }`}>
+                              {Number((data.top_customers[0]?.totalSpent / Math.max(1, data.overview?.totalRevenue) * 100) || 0).toFixed(1)}%
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <p className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>Insufficient client data.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Upsell Opportunities */}
+                  <div className={`rounded-xl p-6 ${isDarkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'} shadow-lg`}>
+                     <h3 className={`text-sm font-bold uppercase tracking-wide mb-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      Upsell Opportunities
+                    </h3>
+                    <div className="space-y-3">
+                      {data.top_customers && data.top_customers.filter(c => c.invoiceCount > 1).length > 0 ? (
+                        data.top_customers.filter(c => c.invoiceCount > 1).slice(0, 3).map((client, idx) => (
+                           <div key={idx} className={`p-3 border rounded-lg flex flex-col ${isDarkMode ? 'bg-indigo-900/20 border-indigo-500/30' : 'bg-indigo-50 border-indigo-100'}`}>
+                              <p className={`font-semibold text-sm ${isDarkMode ? 'text-indigo-300' : 'text-indigo-800'}`}>{client.customerName}</p>
+                              <p className={`text-xs mt-1 ${isDarkMode ? 'text-indigo-200/70' : 'text-indigo-600/80'}`}>Multiple past invoices. Ideal candidate for premium tier upsell or retainer.</p>
+                           </div>
+                        ))
+                      ) : (
+                        <p className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>Looking for repeat clients...</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Expected Range (reusing existing) */}
+                  <div className={`rounded-xl p-6 ${isDarkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'} shadow-lg md:col-span-2 lg:col-span-1`}>
                     <h3 className={`text-sm font-bold uppercase tracking-wide mb-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                       Expected Range
                     </h3>
